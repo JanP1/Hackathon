@@ -1,5 +1,6 @@
 import pygame
 import sys
+from Player import Player
 
 # tutaj dodajemy elementy
 # from objects.game_object import GameObject
@@ -64,6 +65,10 @@ class Start:
     def __init__(self, display, game_state_manager) -> None:
         self.display = display
         self.game_state_manager = game_state_manager
+        # Initialize player roughly at screen center
+        self.player = Player(WIDTH // 2, HEIGHT // 2, WIDTH, HEIGHT, "player")
+        # Optionally initialize sounds if you have a guitar sound file
+        # self.player.init_sounds({"guitar": "assets/sounds/guitar.wav"})
 
     def run(self):
         self.display.fill("green")
@@ -71,6 +76,8 @@ class Start:
         # jak wywoływać i rysować elementy 
         # game_object.update()
         # game_object.draw(self.display)
+        self.player.update()
+        self.player.draw(self.display)
 
 
 

@@ -1,6 +1,6 @@
 import pygame
 import sys
-from Player import Player
+from objects.player import Player
 
 # tutaj dodajemy elementy
 # from objects.game_object import GameObject

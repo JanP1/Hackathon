@@ -1,4 +1,5 @@
 import pygame
+import math
 from objects.game_object import GameObject
 
 
@@ -8,6 +9,8 @@ class Player(GameObject):
 
         # Movement parameters
         self.speed = 5
+        self.friction = 0.9
+        self.velocity = pygame.math.Vector2(0, 0)
 
         # Sound wave visuals generated on mouse click
         self.sound_waves = []  # list of dicts: {pos: (x,y), radius: float, max_radius: int}
@@ -33,24 +36,30 @@ class Player(GameObject):
     def _handle_input(self):
         keys = pygame.key.get_pressed()
 
-        move = pygame.math.Vector2(0, 0)
+        direction = pygame.math.Vector2(0, 0)
 
         if keys[pygame.K_w]:
-            move.y -= 1
+            direction.y -= 1
         if keys[pygame.K_s]:
-            move.y += 1
+            direction.y += 1
         if keys[pygame.K_a]:
-            move.x -= 1
+            direction.x -= 1
         if keys[pygame.K_d]:
-            move.x += 1
+            direction.x += 1
 
         # Normalize diagonal movement so it's not faster than straight
-        if move.length() != 0:
-            move = move.normalize() * self.speed
+        if direction.length() > 0:
+            direction = direction.normalize()
+            self.velocity = direction * self.speed
+        else:
+            self.velocity *= self.friction
+
+            if abs(self.velocity.length()) < self.speed / 5:
+                self.velocity = pygame.math.Vector2(0, 0)
 
         # Apply movement and clamp to screen
-        self.rect.x = int(max(0, min(self.SCREEN_W - self.rect.width, self.rect.x + move.x)))
-        self.rect.y = int(max(0, min(self.SCREEN_H - self.rect.height, self.rect.y + move.y)))
+        self.rect.x = int(max(0, min(self.SCREEN_W - self.rect.width, self.rect.x + self.velocity.x)))
+        self.rect.y = int(max(0, min(self.SCREEN_H - self.rect.height, self.rect.y + self.velocity.y)))
 
     def _handle_look_direction(self):
         # Face towards mouse cursor left/right
@@ -114,7 +123,6 @@ class Player(GameObject):
             max_d_sq = max_d * max_d
             if dist_sq > max_d_sq:
                 # normalize and scale
-                import math
                 d = math.sqrt(dist_sq)
                 vx *= max_d / d
                 vy *= max_d / d

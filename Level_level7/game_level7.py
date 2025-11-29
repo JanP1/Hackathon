@@ -49,7 +49,7 @@ class Game:
     - muzyka mp3 (VLC + crossfade) + bit.mid (MIDI) spowalnia się razem z grą,
     - BPMCounter korzysta z realnego bit.mid,
     - Player z objects.player:
-        * porusza się wg własnego update()
+        * porusza się wg własnego update() (WASD, dash, fale),
         * ma specjalny strzał prawym przyciskiem myszy:
           kulka (piłka) z dymem (SmokeTrail) leci w kierunku celowania (mysz)
     - RangedEnemy:
@@ -57,6 +57,7 @@ class Game:
         * po trafieniu specjalnym pociskiem:
             - generujemy chmurę dymu na przeciwniku
             - przeciwnik się „kurczy” aż do zera i znika ze sceny
+    Wszystko (player, dash, enemy, beat, muzyka, pociski, kurczenie) reaguje na time_scale.
     """
 
     def __init__(
@@ -126,7 +127,9 @@ class Game:
             SCREEN_HEIGHT,
             "player",
         )
-        self.player_base_speed = getattr(self.player, "speed", None)
+        # time_scale wstrzykujemy do playera
+        if hasattr(self.player, "set_time_scale"):
+            self.player.set_time_scale(self.time_scale)
 
         # BPMCounter oparty na bit.mid
         self.bpm_counter = BPMCounter(
@@ -142,13 +145,9 @@ class Game:
         self.enemies: list[RangedEnemy] = []
         ranged = RangedEnemy(600, 400, SCREEN_WIDTH, SCREEN_HEIGHT)
         ranged.set_attack_cooldown(4)  # co 4 beaty
+        if hasattr(ranged, "set_time_scale"):
+            ranged.set_time_scale(self.time_scale)
         self.enemies.append(ranged)
-
-        # bazowe prędkości enemies (jeśli mają atrybut speed)
-        self.enemy_base_speeds: dict[object, float] = {}
-        for enemy in self.enemies:
-            if hasattr(enemy, "speed"):
-                self.enemy_base_speeds[enemy] = enemy.speed
 
         # pociski gracza (specjal skill – prawy przycisk myszy)
         self.player_bullets: list[PlayerBullet] = []
@@ -204,22 +203,17 @@ class Game:
 
         print(f"[TIME] time_scale={self.time_scale:.2f}")
         self.audio_manager.set_time_scale(self.time_scale)
-        self._apply_time_scale_to_speeds()
+        self._apply_time_scale_to_objects()
 
-    def _apply_time_scale_to_speeds(self) -> None:
-        # Player – jeśli ma speed
-        if self.player_base_speed is not None:
-            try:
-                self.player.speed = self.player_base_speed * self.time_scale
-            except Exception:
-                pass
+    def _apply_time_scale_to_objects(self) -> None:
+        # Player
+        if hasattr(self.player, "set_time_scale"):
+            self.player.set_time_scale(self.time_scale)
 
-        # Enemies – jeśli mają speed
-        for enemy, base_speed in self.enemy_base_speeds.items():
-            try:
-                enemy.speed = base_speed * self.time_scale
-            except Exception:
-                pass
+        # Enemies
+        for enemy in self.enemies:
+            if hasattr(enemy, "set_time_scale"):
+                enemy.set_time_scale(self.time_scale)
 
     # =========================================================
     # Specjalny strzał gracza (piłka + smoke)
@@ -259,18 +253,21 @@ class Game:
         if dt < 0.0:
             dt = 0.0
 
-        # bullet-time
+        # bullet-time dla rzeczy liczonych na sekundy
         scaled_dt = dt * self.time_scale  # sekundy
-        self._apply_time_scale_to_speeds()
+
+        # upewnij się, że obiekty mają aktualny time_scale
+        self._apply_time_scale_to_objects()
 
         # --- BPMCounter (bit.mid) ---
         self.bpm_counter.update(scaled_dt)
 
-        # --- Player (porusza się wg własnego update + speed zeskalowany) ---
+        # --- Player (porusza się wg własnego update + time_scale wewnątrz) ---
         self.player.update()
 
         # --- Pociski gracza ---
         for bullet in self.player_bullets:
+            # bullet zakładamy, że bierze dt w sekundach
             bullet.update(scaled_dt)
 
         # kolizje pocisków z wrogami
@@ -281,8 +278,9 @@ class Game:
             b for b in self.player_bullets if b.alive or len(b.trail.particles) > 0
         ]
 
-        # --- Enemies (ruch tylko jeśli nie są w fazie "umierania") ---
-        delta_ms = scaled_dt * 1000.0
+        # --- Enemies ---
+        # Enemy.update dostaje surowe MILISEKUNDY, a time_scale jest użyty wewnątrz Enemy
+        delta_ms = dt * 1000.0
         for enemy in self.enemies:
             if getattr(enemy, "destroying", False):
                 continue  # już "umiera", nie ruszamy AI

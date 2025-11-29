@@ -1,6 +1,7 @@
 import pygame
 import math
 from objects.game_object import GameObject
+from objects.smoke import SmokeTrail  # NOWE: dym do umiejętności na lewy przycisk
 
 
 class Player(GameObject):
@@ -15,12 +16,16 @@ class Player(GameObject):
         # Bullet-time scale (1.0 = normal)
         self.time_scale: float = 1.0
 
-        # Sound wave visuals generated on mouse click
+        # Sound wave + distortion particles (lewy przycisk)
+        # Każda fala ma promień; na obwodzie promienia spawnujemy dym (SmokeTrail)
         self.sound_waves = []  # list of dicts: {pos: (x,y), radius: float, max_radius: int}
         self.wave_speed = 7.0
         self.max_wave_radius = 180
         self.wave_color = (0, 255, 255)
         self.wave_thickness = 5
+
+        # Dym dla fal (okrąg zniekształceń)
+        self.wave_smoke = SmokeTrail(border=1)
 
         # Click handling to avoid spawning too many waves at once
         self._mouse_was_pressed = False
@@ -54,7 +59,8 @@ class Player(GameObject):
 
         Wpływa na:
         - normalny ruch (WASD),
-        - dash (prędkość poruszania się podczas dashu).
+        - dash (prędkość poruszania się podczas dashu),
+        - prędkość rozchodzenia się fali (wave).
         """
         self.time_scale = max(0.0, float(time_scale))
 
@@ -145,7 +151,7 @@ class Player(GameObject):
         self.rect.y = max(0, min(self.SCREEN_H - self.rect.height, self.rect.y))
 
     # -------------------------------------------------
-    # Attack waves
+    # Attack waves (LEWY PRZYCISK: fala + zniekształcające partikles)
     # -------------------------------------------------
     def _handle_mouse_click(self):
         pressed = pygame.mouse.get_pressed(num_buttons=3)
@@ -170,9 +176,35 @@ class Player(GameObject):
             self._mouse_was_pressed = False
 
     def _update_waves(self):
-        # Expand and cull finished waves
+        """
+        - Promień fali rośnie.
+        - Na obwodzie okręgu (we wszystkich kierunkach) spawnujemy dym (SmokeTrail),
+          tak żeby zniekształcenie było dokładnie na pierścieniu.
+        """
+        # rozchodzenie się fal
         for wave in self.sound_waves:
             wave["radius"] += self.wave_speed * self.time_scale
+
+            r = wave["radius"]
+            cx, cy = wave["pos"]
+
+            # liczba punktów na pierścieniu (ilość kierunków)
+            points_on_ring = 24
+
+            for i in range(points_on_ring):
+                angle = (2.0 * math.pi / points_on_ring) * i
+                # pozycja na okręgu
+                px = cx + math.cos(angle) * r
+                py = cy + math.sin(angle) * r
+
+                # niewielka prędkość na zewnątrz, żeby dym lekko "odpływał"
+                vx = math.cos(angle) * 2.0
+                vy = math.sin(angle) * 2.0
+
+                # dodajemy zniekształcający particle dymu
+                self.wave_smoke.add_particle(px, py, vx, vy)
+
+        # usuwamy fale, które przekroczyły max_radius
         self.sound_waves = [w for w in self.sound_waves if w["radius"] <= w["max_radius"]]
 
     # -------------------------------------------------
@@ -187,11 +219,18 @@ class Player(GameObject):
         self._try_start_dash()
         # Update dash movement if active
         self._update_dash()
+        # Lewy przycisk – fala z dymem
         self._handle_mouse_click()
         self._update_waves()
+        # aktualizacja dymu fal
+        self.wave_smoke.update()
 
     def draw(self, screen):
-        # Draw the player (uses facing_right from base class). If dashing, rotate 360deg and scale down slightly.
+        # Najpierw rysujemy dym (zniekształcenie tła / obiektów)
+        self.wave_smoke.draw(screen)
+
+        # Draw the player (uses facing_right from base class).
+        # If dashing, rotate 360deg and scale down slightly.
         if self.is_dashing:
             # Choose sprite based on facing
             base_sprite = self.sprite if self.facing_right else self.sprite_flipped
@@ -206,23 +245,22 @@ class Player(GameObject):
         else:
             super().draw(screen)
 
-        # Draw sound waves
-        for wave in self.sound_waves:
-            if wave["radius"] > 0:
-                pygame.draw.circle(
-                    screen,
-                    self.wave_color,
-                    wave["pos"],
-                    int(wave["radius"]),
-                    self.wave_thickness,
-                )
+        # (opcjonalne) wizualne okręgi fali – jeśli chcesz zostawić „rysowany” wave
+        # for wave in self.sound_waves:
+        #     if wave["radius"] > 0:
+        #         pygame.draw.circle(
+        #             screen,
+        #             self.wave_color,
+        #             wave["pos"],
+        #             int(wave["radius"]),
+        #             self.wave_thickness,
+        #         )
 
-        # Draw a small dot clamped near the player along the direction to the mouse
+        # Dot kierunku celowania
         mx, my = pygame.mouse.get_pos()
         cx, cy = self.rect.centerx, self.rect.centery
         vx = mx - cx
         vy = my - cy
-        # Compute distance and clamp to look_max_distance
         dist_sq = vx * vx + vy * vy
         if dist_sq == 0:
             dot_x, dot_y = cx, cy

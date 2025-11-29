@@ -15,7 +15,7 @@ class SmokeParticle(pygame.sprite.Sprite):
         self.size = size
         self.lifespan = lifespan
         self.age = 0
-        self.border = border
+        self.border = 0#border
 
     def update(self):
         self.x += math.cos(self.angle) * self.speed

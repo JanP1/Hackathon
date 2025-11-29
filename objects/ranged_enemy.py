@@ -2,22 +2,30 @@ import pygame
 from objects.enemy import Enemy
 
 class RangedEnemy(Enemy):
-    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int):
-        super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, 
+    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float, target):
+        super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale,
                         name="ranged_enemy", max_health=60, 
-                        attack_cooldown=4, damage=20)
+                        attack_cooldown=2, damage=20)
         
+        self.rect.width = self.rect.width
+        self.rect.height = self.rect.height
+
         self.projectiles = []
-        self.move_speed = 1.5
+        self.move_speed = 3
+        self.target = target
+
         self.target_x = None
         self.target_y = None
-        self.keep_distance = 200  # Keep this distance from target
+        self.keep_distance = 400  # Keep this distance from target
+
+        self.is_alive = True
+        self.is_active = True
     
     
-    def set_target(self, x: int, y: int):
+    def set_target(self):
         """Set target to keep distance from (e.g., player position)."""
-        self.target_x = x
-        self.target_y = y
+        self.target_x = self.target.rect.centerx
+        self.target_y = self.target.rect.centery
     
     
     def update_behavior(self, delta_time: float):
@@ -90,6 +98,10 @@ class RangedEnemy(Enemy):
         self.projectiles.append(projectile)
     
     
+    def update(self):
+        self.set_target()      
+        self.update_behavior(pygame.time.get_ticks())  
+
     def draw(self, screen):
         """Draw enemy and projectiles."""
         super().draw(screen)

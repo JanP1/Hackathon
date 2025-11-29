@@ -3,7 +3,7 @@ import math
 from objects.game_object import GameObject
 
 class BPMCounter(GameObject):
-    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, bpm: int = 120):
+    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float = 1, bpm: int = 120):
         """
         Simple BPM Counter with moving rectangle and static rectangle.
         
@@ -14,7 +14,7 @@ class BPMCounter(GameObject):
             SCREEN_H: Screen height
             bpm: Beats per minute
         """
-        super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, "bpm_counter")
+        super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale, "bpm_counter")
         
         self.bpm = bpm
         

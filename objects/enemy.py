@@ -3,7 +3,7 @@ from objects.game_object import GameObject
 from abc import abstractmethod
 
 class Enemy(GameObject):
-    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, 
+    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float = 1,  
                  name: str = "enemy", max_health: int = 100, 
                  attack_cooldown: int = 4, damage: int = 10):
         """
@@ -19,7 +19,7 @@ class Enemy(GameObject):
             attack_cooldown: Attack every Nth beat (e.g., 4 = every 4th beat)
             damage: Damage dealt per attack
         """
-        super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, name)
+        super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale, name)
         
         # Health system
         self.max_health = max_health

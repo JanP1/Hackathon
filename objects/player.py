@@ -3,8 +3,8 @@ from objects.game_object import GameObject
 
 
 class Player(GameObject):
-    def __init__(self, x_pos: int, y_pos: int, screen_w: int, screen_h: int, name: str = "player"):
-        super().__init__(x_pos, y_pos, screen_w, screen_h, name)
+    def __init__(self, x_pos: int, y_pos: int, screen_w: int, screen_h: int, scale: float = 1, name: str = "player"):
+        super().__init__(x_pos, y_pos, screen_w, screen_h, scale, name)
 
         # Scale sprite to 2x smaller
         original_width = self.sprite.get_width()

@@ -6,8 +6,16 @@ Podstawowy game object po którym będzie dziedziczyło wszystko co może porusz
 się po ekranie.
 '''
 class GameObject(ABC):
-    def __init__(self, x_pos: int, y_pos:int, SCREEN_W: int, SCREEN_H: int, name: str = "object"):
+    def __init__(self, x_pos: int, y_pos:int, SCREEN_W: int, SCREEN_H: int, scale: float = 1, name: str = "object"):
         self.sprite = pygame.image.load('assets/pictures/default_sprite.png')
+        
+        # Scale the sprite
+        original_width = self.sprite.get_width()
+        original_height = self.sprite.get_height()
+        new_width = int(original_width * scale)
+        new_height = int(original_height * scale)
+        
+        self.sprite = pygame.transform.scale(self.sprite, (new_width, new_height))
         self.sprite_flipped = pygame.transform.flip(self.sprite, True, False);
 
         self.rect = self.sprite.get_rect() # !!! musimy ustalić jak robimy z hitboxem, czy zawsze wielkości spritea 

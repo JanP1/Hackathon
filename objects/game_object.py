@@ -27,6 +27,8 @@ class GameObject(ABC):
 
         self.facing_right = True
 
+        self.is_active = False
+
 
     def init_sounds(self, sound_dict):
         for sound_name, sound_path in sound_dict.items():

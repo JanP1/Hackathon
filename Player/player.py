@@ -1,8 +1,5 @@
-# objects/player.py
-
-import math
 import pygame
-
+import math
 from objects.game_object import GameObject
 
 
@@ -17,25 +14,16 @@ class Player(GameObject):
         self.current_health = self.max_health
 
         # Movement parameters
-        self.speed = 5.0
+        self.speed = 5
         self.friction = 0.9
         self.velocity = pygame.math.Vector2(0, 0)
-        # Kierunek chodzenia (WASD), używany też do dashu
-        self.move_dir = pygame.math.Vector2(1, 0)
-
-        # Bullet-time scale (1.0 = normal)
-        self.time_scale: float = 1.0
-
-        # Manager efektów (shaderowe fale, wstrzykiwany z zewnątrz)
-        self.effects_manager = None
 
         # Sound wave visuals generated on mouse click
-        # list of dicts: {pos: (x,y), radius: float, max_radius: int, color, thickness, damage}
-        self.sound_waves = []
+        self.sound_waves = []  # list of dicts: {pos: (x,y), radius: float, max_radius: int}
         self.wave_speed = 7
         self.max_wave_radius = 180
         self.wave_color = (0, 255, 255)
-        # Kolor fali, gdy kliknięcie nastąpi "on beat" (spec: czerwona)
+        # Kolor fali, gdy kliknięcie nastąpi "on beat" (wymóg: czerwona)
         self.on_beat_wave_color = (255, 0, 0)
         self.wave_thickness = 5
         # Parametry wizualne fali dla kliknięcia on-beat (dłuższa i grubsza)
@@ -45,23 +33,27 @@ class Player(GameObject):
         # Click handling to avoid spawning too many waves at once
         self._mouse_was_pressed = False
         # Attack cooldown (milliseconds)
-        # Wzięte z drugiej klasy (700ms – szybszy ogień niż 2000ms z pierwszej)
         self.attack_cooldown_ms = 700
         self._next_attack_time_ms = 0
 
-        # Beat / damage system
+        # Beat / damage system (mirrors Enemy logic where applicable)
         self.beat_counter = 0
+        # Base damage of a sound wave and a cumulative bonus increased on beat-clicks
         self.base_wave_damage = 10
         self.wave_damage_bonus = 0
+
+        # Flaga była używana do pokolorowania następnej fali; nieużywana przy natychmiastowym sprawdzaniu
         self._on_beat_click_pending = False
-        self._on_beat_checker = None  # wstrzykiwane BPMCounter.is_on_beat lub podobne
+
+        # Funkcja sprawdzająca czy w tej klatce jest beat (wstrzykiwana z zewnątrz)
+        self._on_beat_checker = None
 
         # Dash parameters
         self.is_dashing = False
-        self.dash_cooldown_ms = 3000  # 3 seconds cooldown
+        self.dash_cooldown_ms = 3000  # 3 seconds cooldown per spec
         self._next_dash_time_ms = 0
-        self.dash_duration_ms = 220  # total dash time (real time)
-        self.dash_speed = 18.0       # bazowa prędkość dashu (px / klatkę przy time_scale=1)
+        self.dash_duration_ms = 220  # total dash time
+        self.dash_speed = 18  # pixels per frame while dashing
         self.dash_dir = pygame.math.Vector2(0, 0)
         self.dash_start_time_ms = 0
         self.dash_scale = 0.8  # slightly smaller sprite during dash
@@ -70,33 +62,10 @@ class Player(GameObject):
         self.look_max_distance = 250
 
         # Ensure rect is positioned correctly relative to provided x,y as center
+        # Incoming x_pos, y_pos are treated as center for convenience
         self.rect.centerx = x_pos
         self.rect.centery = y_pos
 
-    # -------------------------------------------------
-    # Time scale (bullet-time) + managers
-    # -------------------------------------------------
-    def set_time_scale(self, time_scale: float) -> None:
-        """Ustawia globalny mnożnik czasu dla ruchu/dashu/fal."""
-        self.time_scale = max(0.0, float(time_scale))
-
-    def set_effects_manager(self, manager) -> None:
-        """Wstrzykuje manager efektów (np. fale shaderowe)."""
-        self.effects_manager = manager
-
-    def set_on_beat_checker(self, checker_fn):
-        """Wstrzykuje funkcję zwracającą True/False czy aktualnie jest beat."""
-        self._on_beat_checker = checker_fn
-
-    def on_beat(self):
-        """Zachowane dla kompatybilności – logika beatu jest robiona przy kliknięciu."""
-        if not self.is_alive:
-            return
-        return
-
-    # -------------------------------------------------
-    # Input / movement
-    # -------------------------------------------------
     def _handle_input(self):
         keys = pygame.key.get_pressed()
 
@@ -111,29 +80,24 @@ class Player(GameObject):
         if keys[pygame.K_d]:
             direction.x += 1
 
-        effective_speed = self.speed * self.time_scale
-
         # Normalize diagonal movement so it's not faster than straight
         if direction.length() > 0:
             direction = direction.normalize()
-            self.move_dir = direction  # <– zapamiętujemy kierunek chodzenia do dashu
-            self.velocity = direction * effective_speed
+            self.velocity = direction * self.speed
         else:
             self.velocity *= self.friction
-            if abs(self.velocity.length()) < self.speed / 5.0:
+
+            if abs(self.velocity.length()) < self.speed / 5:
                 self.velocity = pygame.math.Vector2(0, 0)
 
         # Apply movement and clamp to screen
-        self.rect.x = int(
-            max(0, min(self.SCREEN_W - self.rect.width, self.rect.x + self.velocity.x))
-        )
-        self.rect.y = int(
-            max(0, min(self.SCREEN_H - self.rect.height, self.rect.y + self.velocity.y))
-        )
+        self.rect.x = int(max(0, min(self.SCREEN_W - self.rect.width, self.rect.x + self.velocity.x)))
+        self.rect.y = int(max(0, min(self.SCREEN_H - self.rect.height, self.rect.y + self.velocity.y)))
 
     def _handle_look_direction(self):
-        # Jeśli trwa dash, patrz w kierunku dashu
+        # Jeśli trwa dash, zawsze patrz w kierunku dashu
         if self.is_dashing:
+            # Zmieniaj tylko, gdy jest poziomy komponent, by uniknąć skakania przy czysto pionowym dashu
             if abs(self.dash_dir.x) > 1e-6:
                 self.facing_right = self.dash_dir.x >= 0
             return
@@ -141,26 +105,29 @@ class Player(GameObject):
         mx, my = pygame.mouse.get_pos()
         self.facing_right = mx >= self.rect.centerx
 
-    # -------------------------------------------------
-    # Dash – ZAWSZE w kierunku chodzenia (WASD)
-    # -------------------------------------------------
     def _try_start_dash(self):
+        # Left Shift triggers dash if off cooldown
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LSHIFT] and not self.is_dashing:
             now = pygame.time.get_ticks()
             if now >= self._next_dash_time_ms:
-                # Kierunek dashu = ostatni kierunek ruchu z WASD
-                if self.move_dir.length_squared() == 0:
-                    # brak kierunku – nie dashujemy
-                    return
-
-                vec = self.move_dir.normalize()
+                # Prefer direction of current movement; if stationary, use cursor direction
+                if self.velocity.length_squared() > 0:
+                    vec = self.velocity.normalize()
+                else:
+                    cx, cy = self.rect.centerx, self.rect.centery
+                    mx, my = pygame.mouse.get_pos()
+                    dx = mx - cx
+                    dy = my - cy
+                    vec = pygame.math.Vector2(dx, dy)
+                    if vec.length_squared() == 0:
+                        vec = pygame.math.Vector2(1 if self.facing_right else -1, 0)
+                    else:
+                        vec = vec.normalize()
                 self.dash_dir = vec
-
-                # Od razu obróć gracza w stronę dashu
+                # Obróć gracza w stronę dashu natychmiast po rozpoczęciu
                 if abs(self.dash_dir.x) > 1e-6:
                     self.facing_right = self.dash_dir.x >= 0
-
                 self.is_dashing = True
                 self.dash_start_time_ms = now
                 self._next_dash_time_ms = now + self.dash_cooldown_ms
@@ -168,26 +135,18 @@ class Player(GameObject):
     def _update_dash(self):
         if not self.is_dashing:
             return
-
         now = pygame.time.get_ticks()
         elapsed = now - self.dash_start_time_ms
         if elapsed >= self.dash_duration_ms:
             self.is_dashing = False
             return
-
-        effective_dash_speed = self.dash_speed * self.time_scale
-
         # Move along dash direction
-        self.rect.x = int(self.rect.x + self.dash_dir.x * effective_dash_speed)
-        self.rect.y = int(self.rect.y + self.dash_dir.y * effective_dash_speed)
-
+        self.rect.x = int(self.rect.x + self.dash_dir.x * self.dash_speed)
+        self.rect.y = int(self.rect.y + self.dash_dir.y * self.dash_speed)
         # Clamp to screen bounds
         self.rect.x = max(0, min(self.SCREEN_W - self.rect.width, self.rect.x))
         self.rect.y = max(0, min(self.SCREEN_H - self.rect.height, self.rect.y))
 
-    # -------------------------------------------------
-    # Attack waves (LEWY PRZYCISK)
-    # -------------------------------------------------
     def _handle_mouse_click(self):
         pressed = pygame.mouse.get_pressed(num_buttons=3)
         if pressed[0]:  # left click
@@ -202,64 +161,74 @@ class Player(GameObject):
                         except Exception:
                             on_beat_now = False
 
-                    # Parametry fali – dłuższa/grubsza przy on-beat
+                    # Ustal parametry fali: jeśli on-beat, fala jest dłuższa i ma większe obramowanie
                     max_radius = self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
                     thickness = self.on_beat_wave_thickness if on_beat_now else self.wave_thickness
-                    color = self.wave_color  # kolor bazowy (jeśli chcesz czerwony on-beat, możesz tu podmienić)
-
-                    # Spawn lokalnej fali (kolizje / wizual)
+                    color = self.wave_color  # bez zmiany koloru
+                    # Spawn a new sound wave at player's center
                     self.sound_waves.append({
                         "pos": (self.rect.centerx, self.rect.centery),
                         "radius": 0.0,
                         "max_radius": max_radius,
                         "color": color,
                         "thickness": thickness,
+                        # Store damage so other systems can read it
                         "damage": self.base_wave_damage + self.wave_damage_bonus,
                     })
-
-                    # Dodatkowo zawołaj efekty shaderowe (z pierwszej klasy)
-                    if self.effects_manager:
-                        self.effects_manager.add_wave(self.rect.center)
-
-                    # Jeśli on-beat – buff dmg i licznik
+                    # Jeśli kliknięto dokładnie w beat, zwiększ licznik i bonus obrażeń od razu
                     if on_beat_now:
                         self.beat_counter += 1
                         self.wave_damage_bonus += 15
-
-                    # Dźwięk
+                    # Optionally play a sound if one is set up with key 'guitar'
                     self.play_sound('guitar')
-
-                    # Cooldown
+                    # Set next allowed attack time
                     self._next_attack_time_ms = now + self.attack_cooldown_ms
-
             self._mouse_was_pressed = True
         else:
             self._mouse_was_pressed = False
 
+    def on_beat(self):
+        """Wywoływane z main_copy.py w momencie uderzenia beatu.
+        W nowej logice sprawdzamy beat w momencie kliknięcia, więc tutaj nie modyfikujemy obrażeń.
+        """
+        if not self.is_alive:
+            return
+        # Zachowujemy metodę dla kompatybilności, ale bez efektu ubocznego
+        return
+
+    def set_on_beat_checker(self, checker_fn):
+        """Wstrzykuje funkcję zwracającą True/False czy aktualnie jest beat.
+        Np. przekazać BPMCounter.is_on_beat.
+        """
+        self._on_beat_checker = checker_fn
+
     def _update_waves(self):
         # Expand and cull finished waves
         for wave in self.sound_waves:
-            wave["radius"] += self.wave_speed * self.time_scale
+            wave["radius"] += self.wave_speed
         self.sound_waves = [w for w in self.sound_waves if w["radius"] <= w["max_radius"]]
 
-    # -------------------------------------------------
-    # Public update / draw
-    # -------------------------------------------------
+
+
     def update(self):
-        # Dash ma pierwszeństwo przed normalnym ruchem
+        # Handle all per-frame logic
+        # Dash takes precedence over normal movement
         if not self.is_dashing:
             self._handle_input()
-
         self._handle_look_direction()
+        # Dash input can be attempted every frame
         self._try_start_dash()
+        # Update dash movement if active
         self._update_dash()
         self._handle_mouse_click()
         self._update_waves()
 
-    def draw(self, screen: pygame.Surface):
-        # Rysunek playera
+    def draw(self, screen):
+        # Draw the player (uses facing_right from base class). If dashing, rotate 360deg and scale down slightly.
         if self.is_dashing:
+            # Choose sprite based on facing
             base_sprite = self.sprite if self.facing_right else self.sprite_flipped
+            # Compute rotation progress 0..360 over dash duration
             now = pygame.time.get_ticks()
             elapsed = now - self.dash_start_time_ms
             t = max(0.0, min(1.0, elapsed / (self.dash_duration_ms if self.dash_duration_ms > 0 else 1)))
@@ -270,7 +239,7 @@ class Player(GameObject):
         else:
             super().draw(screen)
 
-        # Rysunek fal dźwiękowych (lokalne okręgi)
+        # Draw sound waves
         for wave in self.sound_waves:
             if wave["radius"] > 0:
                 pygame.draw.circle(
@@ -281,18 +250,22 @@ class Player(GameObject):
                     wave.get("thickness", self.wave_thickness)
                 )
 
-        # Celownik (biała kropka) ograniczony do look_max_distance
+        # Draw a small dot clamped near the player along the direction to the mouse
         mx, my = pygame.mouse.get_pos()
         cx, cy = self.rect.centerx, self.rect.centery
         vx = mx - cx
         vy = my - cy
+        # Compute distance and clamp to look_max_distance
         dist_sq = vx * vx + vy * vy
         if dist_sq == 0:
             dot_x, dot_y = cx, cy
         else:
+            # Only clamp if outside max distance
             max_d = self.look_max_distance
             max_d_sq = max_d * max_d
             if dist_sq > max_d_sq:
+                # normalize and scale
+                import math
                 d = math.sqrt(dist_sq)
                 vx *= max_d / d
                 vy *= max_d / d
@@ -300,11 +273,12 @@ class Player(GameObject):
             dot_y = int(cy + vy)
         pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
 
-        # Pasek życia w dolnej części ekranu
-        self._draw_health_bar(screen)
+        # UI: pasek życia w dolnej części ekranu
+        self._draw_attack_cooldown_bar(screen)
 
-    def _draw_health_bar(self, screen):
+    def _draw_attack_cooldown_bar(self, screen):
         """Rysuje pasek życia gracza (zamiast paska cooldownu)."""
+        # Wymiary i pozycja paska (centrowany przy dolnej krawędzi)
         bar_width = self.SCREEN_W / 3
         bar_height = 30
         bar_y_offset = self.SCREEN_H / 14

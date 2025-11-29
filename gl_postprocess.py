@@ -25,6 +25,7 @@ FRAG_SHADER_SRC = """
 uniform sampler2D u_scene;
 uniform vec2  u_resolution;
 uniform float u_time;
+uniform float u_currentTime; // Aktualny czas w ms z Pygame
 
 const int MAX_BULLETS = 16;
 const int MAX_WAVES   = 8;
@@ -33,8 +34,11 @@ uniform int  u_numBullets;
 uniform vec4 u_bullets[MAX_BULLETS]; // x,y,dir_x,dir_y
 
 uniform int  u_numWaves;
-uniform vec4 u_waves[MAX_WAVES];     // cx,cy,radius,thickness
+// cx, cy, startTime (ms), thickness
+uniform vec4 u_waves[MAX_WAVES];
 
+// prędkość fali w pikselach na milisekundę
+const float WAVE_SPEED = 0.5;
 // parametry trójkątów
 uniform float u_triLength;
 uniform float u_triHalfWidth;
@@ -92,8 +96,12 @@ void main() {
         if (i >= u_numWaves) break;
         vec4 w = u_waves[i];
         vec2 center    = w.xy;
-        float radius   = w.z;
+        float startTime = w.z;
         float thickness = w.w;
+
+        float age = u_currentTime - startTime;
+        if (age < 0.0) continue; // fala z przyszłości?
+        float radius = age * WAVE_SPEED;
 
         float inner = max(0.0, radius - thickness * 0.5);
         float outer = radius + thickness * 0.5;
@@ -152,6 +160,7 @@ class GLPostProcessor:
         self.u_scene = glGetUniformLocation(self.program, "u_scene")
         self.u_resolution = glGetUniformLocation(self.program, "u_resolution")
         self.u_time = glGetUniformLocation(self.program, "u_time")
+        self.u_currentTime = glGetUniformLocation(self.program, "u_currentTime")
 
         self.u_numBullets = glGetUniformLocation(self.program, "u_numBullets")
         self.u_bullets = glGetUniformLocation(self.program, "u_bullets[0]")
@@ -250,14 +259,14 @@ class GLPostProcessor:
         glUniform4fv(self.u_bullets, self.MAX_BULLETS, arr)
 
     def _upload_waves(self, waves: list[tuple[float, float, float, float]]):
-        # waves: list[(cx, cy, radius, thickness)]
+        # waves: list[(cx, cy, startTime, thickness)]
         n = min(len(waves), self.MAX_WAVES)
         arr = np.zeros((self.MAX_WAVES, 4), dtype=np.float32)
         for i in range(n):
-            cx, cy, radius, thickness = waves[i]
+            cx, cy, startTime, thickness = waves[i]
             arr[i, 0] = cx
             arr[i, 1] = cy
-            arr[i, 2] = radius
+            arr[i, 2] = startTime
             arr[i, 3] = thickness
 
         glUniform1i(self.u_numWaves, n)
@@ -268,6 +277,7 @@ class GLPostProcessor:
         surface: pygame.Surface,
         bullets: list[tuple[float, float, float, float]],
         waves: list[tuple[float, float, float, float]],
+        current_time_ms: float,
     ):
         # upload tekstury sceny
         self._upload_scene_texture(surface)
@@ -280,6 +290,9 @@ class GLPostProcessor:
         # czas do animacji
         t = pygame.time.get_ticks() / 1000.0
         glUniform1f(self.u_time, t)
+
+        # czas do obliczenia promienia fali
+        glUniform1f(self.u_currentTime, float(current_time_ms))
 
         # dane distortu
         self._upload_bullets(bullets)

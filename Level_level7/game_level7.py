@@ -20,6 +20,7 @@ if str(BASE_DIR) not in sys.path:
 from audio_manager import Level1AudioManager
 from debugHUD import Level1DebugHUD
 
+from effects_manager import EffectsManager
 from objects.smoke import SmokeTrail
 from objects.bpm_counter import BPMCounter
 from objects.ranged_enemy import RangedEnemy
@@ -58,6 +59,9 @@ class Game:
             - generujemy chmurę dymu na przeciwniku
             - przeciwnik się „kurczy” aż do zera i znika ze sceny
     Wszystko (player, dash, enemy, beat, muzyka, pociski, kurczenie) reaguje na time_scale.
+
+    EffectsManager:
+    - zbiera dane o falach (waves_data) i pociskach (bullets_data) dla GLPostProcessor.
     """
 
     def __init__(
@@ -116,6 +120,11 @@ class Game:
         self.debug_hud = Level1DebugHUD(self.level_name, debug_font)
 
         # ------------------------
+        # MANAGER EFEKTÓW (dla GL postprocess)
+        # ------------------------
+        self.effects_manager = EffectsManager()
+
+        # ------------------------
         # OBIEKTY GRY
         # ------------------------
 
@@ -127,6 +136,9 @@ class Game:
             SCREEN_HEIGHT,
             "player",
         )
+        # Przekazujemy manager efektów do gracza (fale shaderowe)
+        if hasattr(self.player, "set_effects_manager"):
+            self.player.set_effects_manager(self.effects_manager)
         # time_scale wstrzykujemy do playera
         if hasattr(self.player, "set_time_scale"):
             self.player.set_time_scale(self.time_scale)
@@ -147,6 +159,9 @@ class Game:
         ranged.set_attack_cooldown(4)  # co 4 beaty
         if hasattr(ranged, "set_time_scale"):
             ranged.set_time_scale(self.time_scale)
+        # Przekazujemy manager efektów do wroga (jeśli chce coś dodać do postprocessa)
+        if hasattr(ranged, "set_effects_manager"):
+            ranged.set_effects_manager(self.effects_manager)
         self.enemies.append(ranged)
 
         # pociski gracza (specjal skill – prawy przycisk myszy)
@@ -245,6 +260,9 @@ class Game:
         )
         self.player_bullets.append(bullet)
 
+        # NOWE: rejestrujemy pocisk w EffectsManagerze (styl add_bullet)
+        self.effects_manager.add_bullet(bullet)
+
     # =========================================================
     # Update logiki
     # =========================================================
@@ -256,31 +274,32 @@ class Game:
         # bullet-time dla rzeczy liczonych na sekundy
         scaled_dt = dt * self.time_scale  # sekundy
 
+        # zaktualizuj efekty (np. usuń stare fale)
+        self.effects_manager.update()
+
         # upewnij się, że obiekty mają aktualny time_scale
         self._apply_time_scale_to_objects()
 
         # --- BPMCounter (bit.mid) ---
         self.bpm_counter.update(scaled_dt)
 
-        # --- Player (porusza się wg własnego update + time_scale wewnątrz) ---
+        # --- Player ---
         self.player.update()
 
         # --- Pociski gracza ---
         for bullet in self.player_bullets:
-            # bullet zakładamy, że bierze dt w sekundach
             bullet.update(scaled_dt)
 
         # kolizje pocisków z wrogami
         self._handle_bullet_enemy_collisions()
 
         # sprzątanie pocisków – zostawiamy tylko żywe
-        # (dym/efekt distort jest w PlayerBullet, nie ma już .trail)
         self.player_bullets = [
             b for b in self.player_bullets if b.alive
         ]
+        # UWAGA: EffectsManager sam filtruje martwe pociski w get_bullets_data()
 
         # --- Enemies ---
-        # Enemy.update dostaje surowe MILISEKUNDY, a time_scale jest użyty wewnątrz Enemy
         delta_ms = dt * 1000.0
         for enemy in self.enemies:
             if getattr(enemy, "destroying", False):
@@ -485,25 +504,14 @@ if __name__ == "__main__":
         # logika + rysowanie NA game_surface (CPU)
         game.run_frame(dt, events)
 
-        # zbieramy dane o pociskach (pozycja + kierunek)
-        bullets_data: list[tuple[float, float, float, float]] = []
-        for b in game.player_bullets:
-            if not getattr(b, "alive", True):
-                continue
-            # zakładam, że PlayerBullet ma pola x, y, vx, vy
-            bullets_data.append((b.x, b.y, b.vx, b.vy))
+        # Dane dla shadera bierzemy teraz wyłącznie z EffectsManagera
+        bullets_data = game.effects_manager.get_bullets_data()
+        waves_data = game.effects_manager.get_waves_data()
 
-        # dane o falach z playera (pos, radius, thickness)
-        waves_data: list[tuple[float, float, float, float]] = []
-        if hasattr(game, "player") and hasattr(game.player, "sound_waves"):
-            thickness = getattr(game.player, "wave_thickness", 40.0)
-            for w in game.player.sound_waves:
-                cx, cy = w["pos"]
-                radius = w["radius"]
-                waves_data.append((float(cx), float(cy), float(radius), float(thickness)))
+        # Przekazujemy też aktualny czas do shadera, aby mógł animować fale
+        current_time_ms = pygame.time.get_ticks()
 
-        # render postprocess (GPU) na ekran
-        gl_post.render(game_surface, bullets_data, waves_data)
+        gl_post.render(game_surface, bullets_data, waves_data, current_time_ms)
 
         pygame.display.flip()
 

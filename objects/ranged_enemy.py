@@ -7,6 +7,8 @@ class EnemyProjectile:
     Prosty pocisk wroga, kompatybilny z EffectsManager.add_bullet:
     - ma x, y, vx, vy, alive, damage
     - zna rozmiar ekranu, żeby sam się "zabijać" po wylocie poza ekran
+    - posiada radius (do rysowania / kolizji)
+    - posiada trail_length i trail_half_width (parametry trójkąta za pociskiem)
     """
     def __init__(
         self,
@@ -17,6 +19,9 @@ class EnemyProjectile:
         damage: int,
         screen_w: int,
         screen_h: int,
+        radius: int = 7,
+        trail_length: float | None = None,
+        trail_half_width: float | None = None,
     ):
         self.x = float(x)
         self.y = float(y)
@@ -27,6 +32,22 @@ class EnemyProjectile:
 
         self.SCREEN_W = screen_w
         self.SCREEN_H = screen_h
+
+        # promień wizualny/kolizyjny pocisku
+        self.radius = int(radius)
+
+        # domyślne parametry trójkąta: węższy i krótszy niż u gracza
+        if trail_length is None:
+            # np. ok. 9 * radius
+            self.trail_length = float(self.radius) * 9.0
+        else:
+            self.trail_length = float(trail_length)
+
+        if trail_half_width is None:
+            # np. ok. 1.4 * radius
+            self.trail_half_width = float(self.radius) * 1.4
+        else:
+            self.trail_half_width = float(trail_half_width)
 
     def update(self, delta_time: float = 0.0) -> None:
         """
@@ -259,7 +280,7 @@ class RangedEnemy(Enemy):
             vx = 5 if self.facing_right else -5
             vy = 0
 
-        # Create projectile jako obiekt
+        # Create projectile jako obiekt – węższy/krótszy trójkąt niż u gracza
         projectile = EnemyProjectile(
             x=self.rect.centerx,
             y=self.rect.centery,
@@ -268,6 +289,9 @@ class RangedEnemy(Enemy):
             damage=self.damage,
             screen_w=self.SCREEN_W,
             screen_h=self.SCREEN_H,
+            radius=7,             # mniejszy pocisk
+            trail_length=70.0,    # krótszy trójkąt za pociskiem
+            trail_half_width=10.0 # węższy trójkąt za pociskiem
         )
         self.projectiles.append(projectile)
 
@@ -309,4 +333,4 @@ class RangedEnemy(Enemy):
 
         for projectile in self.projectiles:
             px, py = projectile.get_pos_int()
-            pygame.draw.circle(screen, (255, 255, 0), (px, py), 5)
+            pygame.draw.circle(screen, (255, 255, 0), (px, py), projectile.radius)

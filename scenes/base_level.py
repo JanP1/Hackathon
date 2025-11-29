@@ -106,12 +106,14 @@ class BaseLevel(ABC):
             self.HEIGHT // 2,
             self.WIDTH,
             self.HEIGHT,
+            1.0,
             "player",
         )
         if hasattr(self.player, "set_effects_manager"):
             self.player.set_effects_manager(self.effects_manager)
         if hasattr(self.player, "set_time_scale"):
             self.player.set_time_scale(self.time_scale)
+
 
         # ------------------------------------------------------------------
         # BPMCounter

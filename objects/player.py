@@ -95,7 +95,13 @@ class Player(GameObject):
         self.rect.y = int(max(0, min(self.SCREEN_H - self.rect.height, self.rect.y + self.velocity.y)))
 
     def _handle_look_direction(self):
-        # Face towards mouse cursor left/right
+        # Jeśli trwa dash, zawsze patrz w kierunku dashu
+        if self.is_dashing:
+            # Zmieniaj tylko, gdy jest poziomy komponent, by uniknąć skakania przy czysto pionowym dashu
+            if abs(self.dash_dir.x) > 1e-6:
+                self.facing_right = self.dash_dir.x >= 0
+            return
+        # W przeciwnym razie patrz na kursor (lewo/prawo)
         mx, my = pygame.mouse.get_pos()
         self.facing_right = mx >= self.rect.centerx
 
@@ -105,16 +111,23 @@ class Player(GameObject):
         if keys[pygame.K_LSHIFT] and not self.is_dashing:
             now = pygame.time.get_ticks()
             if now >= self._next_dash_time_ms:
-                cx, cy = self.rect.centerx, self.rect.centery
-                mx, my = pygame.mouse.get_pos()
-                dx = mx - cx
-                dy = my - cy
-                vec = pygame.math.Vector2(dx, dy)
-                if vec.length_squared() == 0:
-                    vec = pygame.math.Vector2(1 if self.facing_right else -1, 0)
+                # Prefer direction of current movement; if stationary, use cursor direction
+                if self.velocity.length_squared() > 0:
+                    vec = self.velocity.normalize()
                 else:
-                    vec = vec.normalize()
+                    cx, cy = self.rect.centerx, self.rect.centery
+                    mx, my = pygame.mouse.get_pos()
+                    dx = mx - cx
+                    dy = my - cy
+                    vec = pygame.math.Vector2(dx, dy)
+                    if vec.length_squared() == 0:
+                        vec = pygame.math.Vector2(1 if self.facing_right else -1, 0)
+                    else:
+                        vec = vec.normalize()
                 self.dash_dir = vec
+                # Obróć gracza w stronę dashu natychmiast po rozpoczęciu
+                if abs(self.dash_dir.x) > 1e-6:
+                    self.facing_right = self.dash_dir.x >= 0
                 self.is_dashing = True
                 self.dash_start_time_ms = now
                 self._next_dash_time_ms = now + self.dash_cooldown_ms

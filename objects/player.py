@@ -84,7 +84,7 @@ class Player(GameObject):
         self.dash_cooldown_ms = 3000  # 3 seconds cooldown per spec
         self._next_dash_time_ms = 0
         self.dash_duration_ms = 220  # total dash time
-        self.dash_speed = 18  # pixels per frame while dashing
+        self.dash_speed = 40  # pixels per frame while dashing
         self.dash_dir = pygame.math.Vector2(0, 0)
         self.dash_start_time_ms = 0
         self.dash_scale = 0.8  # slightly smaller sprite during dash
@@ -162,6 +162,11 @@ class Player(GameObject):
                 else:
                     cx, cy = self.rect.centerx, self.rect.centery
                     mx, my = pygame.mouse.get_pos()
+                    if self.camera is not None:
+                        mx += self.camera.x
+                        my += self.camera.y
+
+
                     dx = mx - cx
                     dy = my - cy
                     vec = pygame.math.Vector2(dx, dy)
@@ -189,8 +194,8 @@ class Player(GameObject):
         self.rect.x = int(self.rect.x + self.dash_dir.x * self.dash_speed)
         self.rect.y = int(self.rect.y + self.dash_dir.y * self.dash_speed)
         # Clamp to screen bounds
-        self.rect.x = max(0, min(self.SCREEN_W - self.rect.width, self.rect.x))
-        self.rect.y = max(0, min(self.SCREEN_H - self.rect.height, self.rect.y))
+        self.rect.x = max(0, min(self.map_width - self.rect.width, self.rect.x))
+        self.rect.y = max(0, min(self.map_height - self.rect.height, self.rect.y))
 
     def _handle_mouse_click(self):
         pressed = pygame.mouse.get_pressed(num_buttons=3)
@@ -281,6 +286,7 @@ class Player(GameObject):
             elapsed = now - self.dash_start_time_ms
             t = max(0.0, min(1.0, elapsed / (self.dash_duration_ms if self.dash_duration_ms > 0 else 1)))
             angle = 360 * t if self.facing_right else -360 * t
+
             spun = pygame.transform.rotozoom(base_sprite, -angle, self.dash_scale)
             spun_rect = spun.get_rect(center=(self.rect.centerx - cam_x, self.rect.centery - cam_y))
             screen.blit(spun, spun_rect)

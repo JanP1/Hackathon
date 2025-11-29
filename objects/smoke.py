@@ -16,29 +16,79 @@ class BulletTriangleSmoke:
     Użycie:
         self.distortion = BulletTriangleSmoke()
         ...
-        self.distortion.draw(surface, self.x, self.y, self.vx, self.vy)
+        self.distortion.draw(surface, self.x, self.y, self.vx, self.vy,
+                             length_override=self.trail_length,
+                             half_width_override=self.trail_half_width)
     """
 
     def __init__(self,
                  length: float = 180.0,
                  half_width: float = 60.0,
                  strength: float = 0.28):
-        # długość trójkąta za pociskiem (px)
+        # DOMYŚLNA maksymalna długość trójkąta za pociskiem (px)
         self.length = float(length)
-        # połowa szerokości podstawy trójkąta (px)
+        # DOMYŚLNA połowa szerokości podstawy trójkąta (px)
         self.half_width = float(half_width)
         # siła zniekształcenia
         self.strength = float(strength)
+
+        # punkt startowy efektu (tam, gdzie pocisk był przy pierwszym rysowaniu)
+        self.origin_x: float | None = None
+        self.origin_y: float | None = None
+
+    def reset(self) -> None:
+        """
+        Wyzerowanie punktu startowego.
+        Wołaj, gdy używasz tego samego obiektu do nowego pocisku.
+        """
+        self.origin_x = None
+        self.origin_y = None
 
     def draw(self,
              surface: pygame.Surface,
              tip_x: float,
              tip_y: float,
              vx: float,
-             vy: float) -> None:
+             vy: float,
+             length_override: float | None = None,
+             half_width_override: float | None = None) -> None:
+        """
+        Rysuje trójkątne zniekształcenie za pociskiem.
+
+        length_override      – maksymalna długość trójkąta TYLKO dla tego wywołania
+        half_width_override  – połowa szerokości podstawy TYLKO dla tego wywołania
+
+        Jeśli override'y są None – używa self.length / self.half_width.
+        """
         # jeśli pocisk stoi – nie ma sensu robić efektu
         speed_sq = vx * vx + vy * vy
         if speed_sq <= 0.0001:
+            return
+
+        # DOMYŚLNE / NADPISANE parametry
+        base_max_length = float(length_override) if length_override is not None else self.length
+        base_half_width = float(half_width_override) if half_width_override is not None else self.half_width
+
+        if base_max_length <= 1.0 or base_half_width <= 0.0:
+            return
+
+        # ustaw punkt startowy przy pierwszym rysowaniu
+        tip_xf = float(tip_x)
+        tip_yf = float(tip_y)
+
+        if self.origin_x is None or self.origin_y is None:
+            self.origin_x = tip_xf
+            self.origin_y = tip_yf
+
+        # odległość od punktu startowego – nie chcemy wyjść poza ten punkt
+        dx0 = tip_xf - self.origin_x
+        dy0 = tip_yf - self.origin_y
+        dist_from_origin = math.hypot(dx0, dy0)
+
+        # EFEKTYWNA długość = min(deklarowana_max, ile pocisk faktycznie przeleciał)
+        effective_length = min(base_max_length, dist_from_origin)
+        if effective_length <= 1.0:
+            # jeszcze za wcześnie, żeby rysować sensowny trójkąt
             return
 
         # kierunek lotu pocisku
@@ -54,18 +104,15 @@ class BulletTriangleSmoke:
         perp_x = -dir_y
         perp_y = dir_x
 
-        tip_xf = float(tip_x)
-        tip_yf = float(tip_y)
+        # środek podstawy trójkąta (używamy effective_length i base_half_width)
+        base_cx = tip_xf + dir_x * effective_length
+        base_cy = tip_yf + dir_y * effective_length
 
-        # środek podstawy trójkąta
-        base_cx = tip_xf + dir_x * self.length
-        base_cy = tip_yf + dir_y * self.length
+        base_left_x = base_cx + perp_x * base_half_width
+        base_left_y = base_cy + perp_y * base_half_width
 
-        base_left_x = base_cx + perp_x * self.half_width
-        base_left_y = base_cy + perp_y * self.half_width
-
-        base_right_x = base_cx - perp_x * self.half_width
-        base_right_y = base_cy - perp_y * self.half_width
+        base_right_x = base_cx - perp_x * base_half_width
+        base_right_y = base_cy - perp_y * base_half_width
 
         # bounding box trójkąta
         min_x = int(min(tip_xf, base_left_x, base_right_x))
@@ -90,10 +137,6 @@ class BulletTriangleSmoke:
         tip_local_x = tip_xf - rect.left
         tip_local_y = tip_yf - rect.top
 
-        length = self.length
-        half_width = self.half_width
-
-        # do animacji falowania
         time_s = pygame.time.get_ticks() / 1000.0
 
         for y in range(h):
@@ -103,20 +146,21 @@ class BulletTriangleSmoke:
 
                 # rzut na kierunek trójkąta (d) i prostopadły (s)
                 d = vx_pix * dir_x + vy_pix * dir_y
-                if d < 0.0 or d > length:
+                if d < 0.0 or d > effective_length:
                     continue
 
                 s = vx_pix * perp_x + vy_pix * perp_y
-                max_side = half_width * (d / length)  # trójkąt zwęża się przy wierzchołku
+                # trójkąt zwęża się przy wierzchołku
+                max_side = base_half_width * (d / effective_length)
                 if s < -max_side or s > max_side:
                     continue
 
                 # normalizacja po długości 0..1
-                norm_d = d / length
+                norm_d = d / effective_length
 
                 # falowanie na boki (wzdłuż prostopadłej)
                 wave = math.sin(d * 0.08 - time_s * 6.0)
-                side_offset = wave * self.strength * (1.0 - norm_d) * half_width * 0.5
+                side_offset = wave * self.strength * (1.0 - norm_d) * base_half_width * 0.5
 
                 # lekkie "ściśnięcie" w kierunku pocisku
                 compress = 1.0 - self.strength * 0.35 * (1.0 - norm_d)

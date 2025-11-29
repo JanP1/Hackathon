@@ -4,7 +4,7 @@ import sys
 import pygame
 
 # Importujemy klasę Game z level1 jako Level1Game
-from Level_level7.game_level7 import Game as Level1Game
+from scenes.game_level7 import Game as Level1Game
 
 WIDTH = 1920
 HEIGHT = 1080

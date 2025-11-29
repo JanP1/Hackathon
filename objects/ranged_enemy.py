@@ -6,6 +6,7 @@ class EnemyProjectile:
     """
     Prosty pocisk wroga, kompatybilny z EffectsManager.add_bullet:
     - ma x, y, vx, vy, alive, damage
+    - zna rozmiar ekranu, żeby sam się "zabijać" po wylocie poza ekran
     """
     def __init__(
         self,
@@ -27,12 +28,12 @@ class EnemyProjectile:
         self.SCREEN_W = screen_w
         self.SCREEN_H = screen_h
 
-    def update(self, delta_time: float) -> None:
+    def update(self, delta_time: float = 0.0) -> None:
         """
         Aktualizacja pozycji pocisku.
 
-        Tutaj nadal lecimy „na klatkę” (tak jak miałeś wcześniej),
-        nie używamy delta_time do skalowania prędkości, żeby nie zmieniać logiki.
+        UWAGA: jak w Twojej drugiej wersji – delta_time nie jest używane do
+        skalowania prędkości, ruch jest nadal "na klatkę", żeby nie rozwalać logiki.
         """
         self.x += self.vx
         self.y += self.vy
@@ -51,39 +52,128 @@ class EnemyProjectile:
 
 
 class RangedEnemy(Enemy):
-    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int):
+    def __init__(
+        self,
+        x_pos: int,
+        y_pos: int,
+        SCREEN_W: int,
+        SCREEN_H: int,
+        scale: float = 1.0,
+        target=None,
+        attack_cooldown: int = 4,
+    ):
+        """
+        Połączony konstruktor:
+
+        - może działać w "starym" stylu:
+            RangedEnemy(x, y, W, H, 0.25, player)
+        - może działać w "nowym" stylu:
+            RangedEnemy(x, y, W, H)  # target ustawiany set_target(...)
+        """
+
+        # KLUCZOWA ZMIANA: nie przekazujemy name= jako keyword,
+        # żeby Enemy.__init__ nie dostał dwóch wartości dla 'name'.
         super().__init__(
             x_pos,
             y_pos,
             SCREEN_W,
             SCREEN_H,
-            name="ranged_enemy",
+            scale,
             max_health=60,
-            attack_cooldown=4,
+            attack_cooldown=attack_cooldown,
             damage=20,
         )
 
-        # teraz to lista obiektów EnemyProjectile
+        # Ustawiamy nazwę ręcznie po super().__init__
+        self.name = "ranged_enemy"
+
+        self.SCREEN_W = SCREEN_W
+        self.SCREEN_H = SCREEN_H
+
+        # pociski jako obiekty EnemyProjectile
         self.projectiles: list[EnemyProjectile] = []
-        self.move_speed = 1.5
-        self.target_x = None
-        self.target_y = None
-        self.keep_distance = 200  # Keep this distance from target
+
+        # parametry ruchu / AI
+        self.move_speed = 2.0  # kompromis między 3 a 1.5
+        self.keep_distance = 400  # z pierwszej wersji – trzyma się dalej
+
+        # target może być:
+        # - obiektem (np. Player),
+        # - koordynatami target_x/target_y
+        self.target = target
+        self.target_x: int | None = None
+        self.target_y: int | None = None
+
+        # flagi ze starej wersji
+        self.is_alive: bool = True
+        self.is_active: bool = True
 
         # Manager efektów (wstrzykiwany z zewnątrz)
         self.effects_manager = None
 
-    def set_target(self, x: int, y: int):
-        """Set target to keep distance from (e.g., player position)."""
-        self.target_x = x
-        self.target_y = y
+        # time_scale (podpinany z zewnątrz przez BaseLevel)
+        self.time_scale: float = 1.0
+
+    # ======================================================================
+    # Integracja z BaseLevel / EffectsManager / time_scale
+    # ======================================================================
 
     def set_effects_manager(self, manager) -> None:
         """Wstrzykuje manager efektów do obiektu wroga."""
         self.effects_manager = manager
 
-    def update_behavior(self, delta_time: float):
+    def set_time_scale(self, time_scale: float) -> None:
+        """
+        Podpinany przez BaseLevel. Na razie tylko przechowujemy,
+        żeby nie mnożyć time_scale podwójnie (ruch i tak jest już
+        skalowany wewnątrz dt wyżej).
+        """
+        self.time_scale = float(time_scale)
+
+    # ======================================================================
+    # Target – obsługa zarówno obiektu, jak i koordynatów
+    # ======================================================================
+
+    def set_target(self, *args):
+        """
+        API połączone:
+
+        - enemy.set_target(player)      # ustaw target jako obiekt
+        - enemy.set_target(x, y)        # ustaw bezpośrednio koordynaty
+
+        target_x/target_y są odświeżane na bieżąco w update() jeśli
+        target (obiekt) jest ustawiony.
+        """
+        if len(args) == 1:
+            # obiekt (np. Player)
+            self.target = args[0]
+        elif len(args) == 2:
+            # koordynaty
+            self.target_x = int(args[0])
+            self.target_y = int(args[1])
+        else:
+            raise TypeError(
+                "set_target expect 1 (object) or 2 (x, y) arguments."
+            )
+
+    def _refresh_target_from_object(self) -> None:
+        """
+        Jeżeli mamy przypięty target jako obiekt z rect,
+        przepisz jego pozycję do target_x / target_y.
+        """
+        if self.target is not None and hasattr(self.target, "rect"):
+            self.target_x = self.target.rect.centerx
+            self.target_y = self.target.rect.centery
+
+    # ======================================================================
+    # Ruch + AI
+    # ======================================================================
+
+    def update_behavior(self, delta_time: float = 0.0) -> None:
         """Move to keep distance from target, update projectiles."""
+        # Uaktualnij target z obiektu, jeżeli taki jest
+        self._refresh_target_from_object()
+
         # Keep distance from target
         if self.target_x is not None and self.target_y is not None:
             dx = self.rect.centerx - self.target_x
@@ -117,9 +207,40 @@ class RangedEnemy(Enemy):
             if not projectile.alive:
                 self.projectiles.remove(projectile)
 
-    def on_attack(self):
+    # ======================================================================
+    # Kolizje pocisków z targetem (wersja ze "starego" ranged_enemy)
+    # ======================================================================
+
+    def projectile_check_collision(self) -> None:
+        """
+        Wersja z pierwszego pliku:
+        - pociski sprawdzają kolizję z target.rect,
+        - target dostaje take_damage(damage).
+        Teraz działa na EnemyProjectile, nie na dict-ach.
+        """
+        if self.target is None or not hasattr(self.target, "rect"):
+            return
+
+        for projectile in self.projectiles[:]:
+            px, py = projectile.get_pos_int()
+
+            if self.target.rect.collidepoint(px, py):
+                if hasattr(self.target, "take_damage"):
+                    self.target.take_damage(projectile.damage)
+                print("PLAYER HIT")
+                projectile.alive = False
+                self.projectiles.remove(projectile)
+
+    # ======================================================================
+    # Atak
+    # ======================================================================
+
+    def on_attack(self) -> None:
         """Shoot a projectile towards target."""
         print(f"{self.name} shoots projectile! Damage: {self.damage}")
+
+        # Upewniamy się, że target_x / target_y są aktualne
+        self._refresh_target_from_object()
 
         # Calculate direction to target if available
         if self.target_x is not None and self.target_y is not None:
@@ -151,16 +272,41 @@ class RangedEnemy(Enemy):
         self.projectiles.append(projectile)
 
         # Rejestrujemy pocisk w managerze efektów (add_bullet)
-        if self.effects_manager:
+        if self.effects_manager is not None:
             self.effects_manager.add_bullet(projectile)
-            # Dodaj też efekt fali przy strzale (jak miałeś)
-            # self.effects_manager.add_wave(self.rect.center)
+            # Jeśli chcesz falę przy strzale:
+            # if hasattr(self.effects_manager, "add_wave"):
+            #     self.effects_manager.add_wave(self.rect.center)
 
-    def draw(self, screen):
+    # ======================================================================
+    # Update – kompatybilny z obydwoma stylami (z dt i bez dt)
+    # ======================================================================
+
+    def update(self, delta_time: float = 0.0) -> None:
+        """
+        Łączy zachowanie obu wersji:
+
+        - stary kod może wywołać: enemy.update()
+        - nowy kod (BaseLevel) może wywołać: enemy.update(delta_ms)
+
+        W środku:
+        - update_behavior() (ruch + update pocisków),
+        - projectile_check_collision().
+        """
+        if not self.is_active or not self.is_alive:
+            return
+
+        self.update_behavior(delta_time)
+        self.projectile_check_collision()
+
+    # ======================================================================
+    # Rysowanie
+    # ======================================================================
+
+    def draw(self, screen: pygame.Surface) -> None:
         """Draw enemy and projectiles."""
         super().draw(screen)
 
-        # Draw projectiles
         for projectile in self.projectiles:
             px, py = projectile.get_pos_int()
             pygame.draw.circle(screen, (255, 255, 0), (px, py), 5)

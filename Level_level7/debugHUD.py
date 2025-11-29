@@ -5,7 +5,7 @@ import pygame
 
 class Level1DebugHUD:
     """
-    Prosty HUD tekstowy z informacją o levelu, prędkości i FPS.
+    Prosty HUD: level, prędkość bazowa gracza, time_scale, efektywna prędkość, FPS.
     """
 
     def __init__(self, level_name: str, font: pygame.font.Font) -> None:
@@ -15,13 +15,17 @@ class Level1DebugHUD:
     def draw(
         self,
         surface: pygame.Surface,
-        player_speed: float,
+        base_player_speed: float,
+        time_scale: float,
         fps: float,
     ) -> None:
-        debug_text = (
+        effective_speed = base_player_speed * time_scale
+        text = (
             f"Level: {self.level_name} | "
-            f"speed: {player_speed:.1f} px/s | "
+            f"base spd: {base_player_speed:.1f} px/s | "
+            f"time: {time_scale:.2f}x | "
+            f"eff: {effective_speed:.1f} px/s | "
             f"FPS: {fps:.1f}"
         )
-        text_surface = self.font.render(debug_text, True, (255, 255, 255))
-        surface.blit(text_surface, (10, 10))
+        surf = self.font.render(text, True, (255, 255, 255))
+        surface.blit(surf, (10, 10))

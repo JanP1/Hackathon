@@ -3,8 +3,7 @@ from pathlib import Path
 
 import pygame
 
-# Umożliwia import "classes.*" zarówno przy uruchamianiu jako skrypt,
-# jak i przy imporcie z game.py
+# Umożliwia import "audio_manager", "player", "debugHUD"
 CURRENT_DIR = Path(__file__).resolve().parent
 if str(CURRENT_DIR) not in sys.path:
     sys.path.append(str(CURRENT_DIR))
@@ -14,22 +13,24 @@ from player import Level1Player
 from debugHUD import Level1DebugHUD
 
 # -----------------------------
-# Stałe wspólne dla poziomu
+# Stałe poziomu
 # -----------------------------
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 FPS = 60
 
-# Struktura:
-#   Game/
+# Struktura repo:
+#   Hackathon/
 #     assets/
 #       sounds/
 #         bit.mid
 #         mexicanBit.mp3
-#         click.wav   <- opcjonalny krótki „klik” na beat
 #     Level_level7/
 #       game_level7.py
-BASE_DIR = Path(__file__).resolve().parent.parent  # folder Game/
+#       audio_manager.py
+#       player.py
+#       debugHUD.py
+BASE_DIR = Path(__file__).resolve().parent.parent  # folder Hackathon/
 SOUNDS_DIR = BASE_DIR / "assets" / "sounds"
 BIT_MID_PATH = SOUNDS_DIR / "bit.mid"
 MEXICAN_MP3_PATH = SOUNDS_DIR / "mexicanBit.mp3"
@@ -38,9 +39,9 @@ MEXICAN_MP3_PATH = SOUNDS_DIR / "mexicanBit.mp3"
 class Game:
     """
     Główna klasa poziomu:
-    - scala Playera, AudioManager i HUD,
+    - łączy Playera, AudioManager (mp3 przez VLC) i HUD,
     - nie tworzy własnego okna (korzysta z przekazanego screen),
-    - nie ma własnej pętli while – używasz run_frame(dt, events).
+    - nie ma swojej pętli while – używasz run_frame(dt, events).
     """
 
     def __init__(
@@ -61,10 +62,10 @@ class Game:
         # ------------------------
         # GLOBALNY KONTROLER CZASU
         # ------------------------
-        self.time_scale: float = 1.0       # 1.0 = normalna prędkość gry
-        self.min_time_scale: float = 0.1   # minimalne zwolnienie
-        self.max_time_scale: float = 3.0   # maksymalne przyspieszenie
-        self.time_scale_step: float = 0.1  # krok przy scrollu
+        self.time_scale: float = 1.0        # 1.0 = normalna prędkość
+        self.min_time_scale: float = 0.1    # minimalne zwolnienie gry
+        self.max_time_scale: float = 3.0    # maksymalne przyspieszenie
+        self.time_scale_step: float = 0.1   # krok przy scrollu
 
         # --- obiekty poziomu ---
         self.player = Level1Player(
@@ -78,17 +79,22 @@ class Game:
         debug_font = pygame.font.SysFont("consolas", 18)
         self.debug_hud = Level1DebugHUD(self.level_name, debug_font)
 
-        # UWAGA: enable_background_mp3=False → tryb „treningowy” bez mp3,
-        # tylko beat/metronom, który w 100% podlega time_scale.
+        # MP3 przez VLC + beat z MIDI
         self.audio_manager = Level1AudioManager(
             fps=FPS,
             bit_mid_path=BIT_MID_PATH,
             mexican_mp3_path=MEXICAN_MP3_PATH,
-            enable_background_mp3=False,
+            enable_background_mp3=True,
         )
+        # startowe tempo
+        self.audio_manager.set_time_scale(self.time_scale)
 
         # flaga dla zewnętrznego state managera
         self.want_quit: bool = False
+
+    # =========================================================
+    # Publiczne API: jedna klatka poziomu
+    # =========================================================
 
     def run_frame(self, dt: float, events: list[pygame.event.Event]) -> None:
         """
@@ -107,24 +113,21 @@ class Game:
         """
         self.audio_manager.stop()
 
-    # ======================
-    # Metody wewnętrzne
-    # ======================
+    # =========================================================
+    # Wewnętrzne metody
+    # =========================================================
 
     def _handle_events(self, events: list[pygame.event.Event]) -> None:
         for event in events:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                # ESC -> prosimy state manager o wyjście z poziomu
                 self.want_quit = True
                 self.stop_audio()
 
-            # Sterowanie PRĘDKOŚCIĄ CZASU gry scroll’em
             elif event.type == pygame.MOUSEWHEEL:
+                # Scroll = zmiana time_scale
                 if event.y > 0:
-                    # scroll w górę → przyspieszenie
                     self._change_time_scale(+self.time_scale_step)
                 elif event.y < 0:
-                    # scroll w dół → zwolnienie
                     self._change_time_scale(-self.time_scale_step)
 
     def _change_time_scale(self, delta: float) -> None:
@@ -135,15 +138,17 @@ class Game:
             self.time_scale = self.max_time_scale
 
         print(f"[TIME] time_scale={self.time_scale:.2f}")
+        # MP3 przez VLC – sterowanie docelową prędkością (z opóźnieniem)
+        self.audio_manager.set_time_scale(self.time_scale)
 
     def _update(self, dt: float) -> None:
-        # skalujemy dt – WSZYSTKO, co używa dt, zwalnia/przyspiesza
+        # Skalujemy dt – WSZYSTKO (ruch, beat) zależy od time_scale:
         scaled_dt = max(0.0, dt * self.time_scale)
 
-        # ruch i kolizje gracza
+        # ruch gracza
         self.player.update(scaled_dt)
 
-        # synchronizacja z muzyką/beatem – używamy TEGO SAMEGO scaled_dt
+        # beat z MIDI (używa scaled_dt) + opóźnione przełączanie prędkości audio
         self.audio_manager.update(self.player.on_beat, scaled_dt)
 
     def _draw(self) -> None:
@@ -167,7 +172,7 @@ class Game:
 
 
 # -----------------------------
-# Konfiguracja poziomu
+# Konfiguracja poziomu (standalone)
 # -----------------------------
 level1_player_speed = 400.0
 level1_bg_color = (10, 40, 90)
@@ -176,9 +181,9 @@ level1_bg_color = (10, 40, 90)
 if __name__ == "__main__":
     """
     Standalone test levelu:
-    Uruchamiasz z katalogu głównego projektu (nad folderem Game):
+    Uruchamiasz z katalogu głównego projektu (nad folderem Hackathon):
 
-        python Game/Level_level7/game_level7.py
+        python Level_level7/game_level7.py
     """
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))

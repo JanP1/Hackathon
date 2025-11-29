@@ -1,4 +1,6 @@
 import sys
+import math
+import random
 from pathlib import Path
 
 import pygame
@@ -10,8 +12,6 @@ import pygame
 CURRENT_DIR = Path(__file__).resolve().parent  # .../Hackathon/Level_level7
 BASE_DIR = CURRENT_DIR.parent                  # .../Hackathon
 
-# żeby działały zarówno importy lokalne (audio_manager, player, debugHUD),
-# jak i objects.*
 if str(CURRENT_DIR) not in sys.path:
     sys.path.append(str(CURRENT_DIR))
 if str(BASE_DIR) not in sys.path:
@@ -20,10 +20,11 @@ if str(BASE_DIR) not in sys.path:
 from audio_manager import Level1AudioManager
 from debugHUD import Level1DebugHUD
 
-# obiekty gry z katalogu objects/
+from objects.smoke import SmokeTrail
 from objects.bpm_counter import BPMCounter
 from objects.ranged_enemy import RangedEnemy
 from objects.player import Player
+from objects.player_bullet import PlayerBullet
 
 # -----------------------------
 # Stałe poziomu
@@ -39,19 +40,20 @@ MEXICAN_MP3_PATH = SOUNDS_DIR / "mexicanBit.mp3"
 
 class Game:
     """
-    Główna klasa poziomu:
+    Level 7:
 
-    - interfejs kompatybilny ze starym game.py:
-        Game(screen, clock, level_name, player_speed, bg_color)
-        .run_frame(dt, events)
-        .want_quit
-        .stop_audio()
-    - wewnątrz:
-        * audio_manager (mp3 przez VLC, crossfade, time_scale),
-        * BPMCounter oparty na bit.mid,
-        * Player z objects.player,
-        * RangedEnemy z objects.ranged_enemy (atak co N beatów),
-        * scroll myszy steruje time_scale (czas gry + muzyka).
+    - sterowanie czasem gry time_scale scroll'em myszy (bullet-time),
+    - muzyka mp3 (VLC + crossfade) + bit.mid (MIDI) spowalnia się razem z grą,
+    - BPMCounter korzysta z realnego bit.mid,
+    - Player z objects.player:
+        * porusza się wg własnego update()
+        * ma specjalny strzał prawym przyciskiem myszy:
+          kulka (piłka) z dymem (SmokeTrail) leci w kierunku celowania (mysz)
+    - RangedEnemy:
+        * reaguje na beat (co N uderzeń),
+        * po trafieniu specjalnym pociskiem:
+            - generujemy chmurę dymu na przeciwniku
+            - przeciwnik się „kurczy” aż do zera i znika ze sceny
     """
 
     def __init__(
@@ -66,17 +68,16 @@ class Game:
         self.clock = clock
 
         self.level_name = level_name
-        # w tym levelu player_speed jest używany tylko do HUD (info)
-        self.base_player_speed = float(player_speed)
+        self.base_player_speed_param = float(player_speed)
         self.bg_color = bg_color
 
         # ------------------------
         # GLOBALNY KONTROLER CZASU
         # ------------------------
-        self.time_scale: float = 1.0        # 1.0 = normalna prędkość
-        self.min_time_scale: float = 0.1    # minimalne zwolnienie gry
-        self.max_time_scale: float = 3.0    # maksymalne przyspieszenie
-        self.time_scale_step: float = 0.1   # krok przy scrollu
+        self.time_scale: float = 1.0
+        self.min_time_scale: float = 0.1
+        self.max_time_scale: float = 3.0
+        self.time_scale_step: float = 0.1
 
         # ------------------------
         # AUDIO: mp3 + bit.mid
@@ -87,7 +88,6 @@ class Game:
             mexican_mp3_path=MEXICAN_MP3_PATH,
             enable_background_mp3=True,
         )
-        # startowe tempo
         self.audio_manager.set_time_scale(self.time_scale)
 
         # ------------------------
@@ -101,7 +101,7 @@ class Game:
         # OBIEKTY GRY
         # ------------------------
 
-        # Player z katalogu objects (sterowanie WASD itd.)
+        # Player
         self.player = Player(
             SCREEN_WIDTH // 2,
             SCREEN_HEIGHT // 2,
@@ -109,48 +109,52 @@ class Game:
             SCREEN_HEIGHT,
             "player",
         )
+        self.player_base_speed = getattr(self.player, "speed", None)
 
-        # BPMCounter – sterowany realnymi nutami z bit.mid
+        # BPMCounter oparty na bit.mid
         self.bpm_counter = BPMCounter(
             x_pos=SCREEN_WIDTH - 200,
             y_pos=SCREEN_HEIGHT - 50,
             SCREEN_W=SCREEN_WIDTH,
             SCREEN_H=SCREEN_HEIGHT,
-            bpm=120,  # fallback (gdyby nie było midi), ale my podamy midi_note_times
+            bpm=120,
             midi_note_times=self.audio_manager.midi_note_times,
         )
 
-        # Enemies – np. jeden RangedEnemy atakujący co 4 beaty
+        # Enemies – na start jeden RangedEnemy
         self.enemies: list[RangedEnemy] = []
         ranged = RangedEnemy(600, 400, SCREEN_WIDTH, SCREEN_HEIGHT)
         ranged.set_attack_cooldown(4)  # co 4 beaty
         self.enemies.append(ranged)
 
-        # flaga do wykrywania pojedynczego triggera na beat
+        # bazowe prędkości enemies (jeśli mają atrybut speed)
+        self.enemy_base_speeds: dict[object, float] = {}
+        for enemy in self.enemies:
+            if hasattr(enemy, "speed"):
+                self.enemy_base_speeds[enemy] = enemy.speed
+
+        # pociski gracza (specjal skill – prawy przycisk myszy)
+        self.player_bullets: list[PlayerBullet] = []
+
+        # dymy eksplozji na wrogach
+        self.smoke_explosions: list[SmokeTrail] = []
+
+        # pomocnicza flaga do pojedynczego triggera beatu
         self.beat_triggered: bool = False
 
-        # flaga dla zewnętrznego state managera (ESC / wyjście z levelu)
+        # flaga dla zewnętrznego game_state_managera
         self.want_quit: bool = False
 
     # =========================================================
-    # Publiczne API: jedna klatka poziomu
+    # Publiczne API poziomu
     # =========================================================
 
     def run_frame(self, dt: float, events: list[pygame.event.Event]) -> None:
-        """
-        Jedna klatka levelu:
-        - obsługa eventów,
-        - update logiki (z dt * time_scale),
-        - rysowanie na screen.
-        """
         self._handle_events(events)
         self._update(dt)
         self._draw()
 
     def stop_audio(self) -> None:
-        """
-        Zatrzymanie audio. Wołane przy wychodzeniu z levelu.
-        """
         self.audio_manager.stop()
 
     # =========================================================
@@ -160,16 +164,19 @@ class Game:
     def _handle_events(self, events: list[pygame.event.Event]) -> None:
         for event in events:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                # wyjście z poziomu
                 self.want_quit = True
                 self.stop_audio()
 
             elif event.type == pygame.MOUSEWHEEL:
-                # Scroll = zmiana time_scale
                 if event.y > 0:
                     self._change_time_scale(+self.time_scale_step)
                 elif event.y < 0:
                     self._change_time_scale(-self.time_scale_step)
+
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                # prawy przycisk -> strzał kulą z dymem
+                if event.button == 3:
+                    self._shoot_special()
 
     def _change_time_scale(self, delta: float) -> None:
         self.time_scale += delta
@@ -179,87 +186,232 @@ class Game:
             self.time_scale = self.max_time_scale
 
         print(f"[TIME] time_scale={self.time_scale:.2f}")
-        # MP3 przez VLC – sterowanie tempem + crossfade między prędkościami
         self.audio_manager.set_time_scale(self.time_scale)
+        self._apply_time_scale_to_speeds()
+
+    def _apply_time_scale_to_speeds(self) -> None:
+        # Player – jeśli ma speed
+        if self.player_base_speed is not None:
+            try:
+                self.player.speed = self.player_base_speed * self.time_scale
+            except Exception:
+                pass
+
+        # Enemies – jeśli mają speed
+        for enemy, base_speed in self.enemy_base_speeds.items():
+            try:
+                enemy.speed = base_speed * self.time_scale
+            except Exception:
+                pass
+
+    # =========================================================
+    # Specjalny strzał gracza (piłka + smoke)
+    # =========================================================
+
+    def _shoot_special(self) -> None:
+        # pozycja gracza
+        px, py = self.player.rect.center
+
+        # kierunek = celowanie w pozycję myszy
+        mx, my = pygame.mouse.get_pos()
+        dx = mx - px
+        dy = my - py
+        length = math.hypot(dx, dy)
+        if length == 0:
+            return
+
+        dir_x = dx / length
+        dir_y = dy / length
+
+        # prędkość bazowa pocisku (px/s)
+        bullet_speed = 900.0
+
+        bullet = PlayerBullet(
+            x=px,
+            y=py,
+            vx=dir_x * bullet_speed,
+            vy=dir_y * bullet_speed,
+        )
+        self.player_bullets.append(bullet)
 
     # =========================================================
     # Update logiki
     # =========================================================
 
     def _update(self, dt: float) -> None:
-        # Skalujemy dt – WSZYSTKO (ruch, bpm_counter, beat z MIDI) zależy od time_scale:
         if dt < 0.0:
             dt = 0.0
-        scaled_dt = dt * self.time_scale  # sekundy
 
-        # --- BPMCounter oparty na bit.mid ---
+        # bullet-time
+        scaled_dt = dt * self.time_scale  # sekundy
+        self._apply_time_scale_to_speeds()
+
+        # --- BPMCounter (bit.mid) ---
         self.bpm_counter.update(scaled_dt)
 
-        # --- Player (z objects) ---
-        # Ten Player zwykle w update() sam czyta klawiaturę, więc bez dt
+        # --- Player (porusza się wg własnego update + speed zeskalowany) ---
         self.player.update()
 
-        # --- Enemies ---
-        # RangedEnemy.update() w Twoim przykładzie dostawał delta_time w ms,
-        # więc tu konwersja scaled_dt (s) -> ms:
-        delta_ms = scaled_dt * 1000.0
+        # --- Pociski gracza ---
+        for bullet in self.player_bullets:
+            bullet.update(scaled_dt)
 
+        # kolizje pocisków z wrogami
+        self._handle_bullet_enemy_collisions()
+
+        # sprzątanie pocisków (zostawiamy te, które jeszcze mają dym)
+        self.player_bullets = [
+            b for b in self.player_bullets if b.alive or len(b.trail.particles) > 0
+        ]
+
+        # --- Enemies (ruch tylko jeśli nie są w fazie "umierania") ---
+        delta_ms = scaled_dt * 1000.0
         for enemy in self.enemies:
+            if getattr(enemy, "destroying", False):
+                continue  # już "umiera", nie ruszamy AI
             enemy.update(delta_ms)
 
-            # target = pozycja playera
             if isinstance(enemy, RangedEnemy):
                 enemy.set_target(self.player.rect.centerx, self.player.rect.centery)
 
-        # --- Atak na beat (logika jak w Start.run z Twojego przykładu) ---
+        # --- Kurczenie wrogów trafionych specjalnym strzałem ---
+        self._update_enemy_shrink(scaled_dt)
+
+        # --- Beat logic (atak na beat) ---
         if self.bpm_counter.is_on_beat():
             if not self.beat_triggered:
                 self.beat_triggered = True
-                # pojedynczy trigger na beat dla wszystkich enemies
                 for enemy in self.enemies:
+                    if getattr(enemy, "destroying", False):
+                        continue
                     enemy.on_beat()
         else:
             self.beat_triggered = False
 
-        # --- Audio manager ---
-        # Potrzebuje scaled_dt do:
-        #   - przesuwania wirtualnego czasu muzyki (bit.mid),
-        #   - wyzwalania on_beat (jeśli byśmy chcieli),
-        #   - obsługi crossfade'u mp3.
-        #
-        # Tutaj nie używamy callbacka on_beat, więc dajemy prostego lambda.
+        # --- Audio manager (MIDI + crossfade mp3) ---
         self.audio_manager.update(lambda _note_time, _music_time: None, scaled_dt)
+
+        # --- Dymy eksplozji na wrogach ---
+        for trail in self.smoke_explosions:
+            trail.update()
+        self.smoke_explosions = [
+            t for t in self.smoke_explosions if len(t.particles) > 0
+        ]
+
+    def _handle_bullet_enemy_collisions(self) -> None:
+        enemies_hit = set()
+
+        for bullet in self.player_bullets:
+            if not bullet.alive:
+                continue
+            b_rect = bullet.get_rect()
+
+            for enemy in self.enemies:
+                if getattr(enemy, "destroying", False):
+                    continue
+                if not hasattr(enemy, "rect"):
+                    continue
+
+                if b_rect.colliderect(enemy.rect):
+                    bullet.alive = False
+                    enemies_hit.add(enemy)
+                    break
+
+        for enemy in enemies_hit:
+            self._hit_enemy_with_special(enemy)
+
+    def _hit_enemy_with_special(self, enemy) -> None:
+        """
+        Trafienie wroga specjalnym pociskiem:
+        - odpalamy na nim dym (SmokeTrail)
+        - zaczynamy animację kurczenia do zera.
+        """
+        if getattr(enemy, "destroying", False):
+            return
+
+        enemy.destroying = True
+        enemy.destroy_scale = 1.0
+        enemy.original_rect = enemy.rect.copy()
+
+        ex, ey = enemy.rect.center
+
+        # duża chmura smoke przy trafieniu
+        explosion = SmokeTrail(border=1)
+        for _ in range(80):
+            dx = random.uniform(-1.0, 1.0)
+            dy = random.uniform(-1.0, 1.0)
+            explosion.add_particle(ex, ey, dx, dy)
+        self.smoke_explosions.append(explosion)
+
+    def _update_enemy_shrink(self, scaled_dt: float) -> None:
+        """
+        Powolne kurczenie wrogów po trafieniu. Gdy rozmiar spadnie do zera – usuwamy.
+        """
+        to_remove = []
+
+        for enemy in self.enemies:
+            if not getattr(enemy, "destroying", False):
+                continue
+
+            # inicjalizacja oryginalnego rect, gdyby nie było
+            orig = getattr(enemy, "original_rect", enemy.rect)
+
+            # zmniejszamy skalę
+            scale_speed = 1.5  # ile "skali" na sekundę
+            enemy.destroy_scale -= scale_speed * scaled_dt
+
+            if enemy.destroy_scale <= 0.0:
+                to_remove.append(enemy)
+                continue
+
+            # przeskalowany rect wokół środka
+            cx, cy = orig.center
+            new_w = max(1, int(orig.width * enemy.destroy_scale))
+            new_h = max(1, int(orig.height * enemy.destroy_scale))
+
+            enemy.rect = pygame.Rect(0, 0, new_w, new_h)
+            enemy.rect.center = (cx, cy)
+
+        if to_remove:
+            self.enemies = [e for e in self.enemies if e not in to_remove]
 
     # =========================================================
     # Rysowanie
     # =========================================================
 
     def _draw(self) -> None:
-        # tło
         self.screen.fill(self.bg_color)
 
-        # BPM counter
+        # BPM
         self.bpm_counter.draw(self.screen)
 
-        # player
-        self.player.draw(self.screen)
+        # pociski (w tym ich dym)
+        for bullet in self.player_bullets:
+            bullet.draw(self.screen)
 
-        # enemies
+        # wrogowie (część może być w fazie kurczenia – rect już zmniejszony)
         for enemy in self.enemies:
             enemy.draw(self.screen)
+
+        # dymy eksplozji na wrogach
+        for trail in self.smoke_explosions:
+            trail.draw(self.screen)
+
+        # gracz
+        self.player.draw(self.screen)
 
         # HUD
         fps = self.clock.get_fps() if self.clock is not None else 0.0
         self.debug_hud.draw(
             self.screen,
-            base_player_speed=self.base_player_speed,
+            base_player_speed=self.base_player_speed_param,
             time_scale=self.time_scale,
             fps=fps,
         )
 
 
 # -----------------------------
-# Standalone test levelu
+# Standalone test
 # -----------------------------
 
 level1_player_speed = 400.0
@@ -267,11 +419,6 @@ level1_bg_color = (10, 40, 90)
 
 
 if __name__ == "__main__":
-    """
-    Standalone test poziomu:
-
-        python Level_level7/game_level7.py
-    """
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     clock = pygame.time.Clock()

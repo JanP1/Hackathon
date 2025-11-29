@@ -37,6 +37,9 @@ SOUNDS_DIR = BASE_DIR / "assets" / "sounds"
 BIT_MID_PATH = SOUNDS_DIR / "bit.mid"
 MEXICAN_MP3_PATH = SOUNDS_DIR / "mexicanBit.mp3"
 
+PICTURES_DIR = BASE_DIR / "assets" / "pictures"
+MAIN_BG_PATH = PICTURES_DIR / "main_background.png"
+
 
 class Game:
     """
@@ -70,6 +73,20 @@ class Game:
         self.level_name = level_name
         self.base_player_speed_param = float(player_speed)
         self.bg_color = bg_color
+
+        # ------------------------
+        # TŁO – obraz zamiast jednolitego koloru
+        # ------------------------
+        self.background_image: pygame.Surface | None = None
+        try:
+            img = pygame.image.load(str(MAIN_BG_PATH)).convert()
+            self.background_image = pygame.transform.scale(
+                img, (SCREEN_WIDTH, SCREEN_HEIGHT)
+            )
+            print(f"[BG] Załadowano tło: {MAIN_BG_PATH}")
+        except Exception as e:
+            print(f"[BG][WARN] Nie udało się załadować {MAIN_BG_PATH}: {e}")
+            self.background_image = None
 
         # ------------------------
         # GLOBALNY KONTROLER CZASU
@@ -380,7 +397,11 @@ class Game:
     # =========================================================
 
     def _draw(self) -> None:
-        self.screen.fill(self.bg_color)
+        # tło: najpierw obrazek, jak nie ma to kolor
+        if self.background_image is not None:
+            self.screen.blit(self.background_image, (0, 0))
+        else:
+            self.screen.fill(self.bg_color)
 
         # BPM
         self.bpm_counter.draw(self.screen)

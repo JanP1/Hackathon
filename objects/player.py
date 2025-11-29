@@ -8,13 +8,16 @@ class Player(GameObject):
         super().__init__(x_pos, y_pos, screen_w, screen_h, name)
 
         # Movement parameters
-        self.speed = 5
+        self.speed = 5.0         # bazowa prędkość (px / klatkę przy time_scale=1)
         self.friction = 0.9
         self.velocity = pygame.math.Vector2(0, 0)
 
+        # Bullet-time scale (1.0 = normal)
+        self.time_scale: float = 1.0
+
         # Sound wave visuals generated on mouse click
         self.sound_waves = []  # list of dicts: {pos: (x,y), radius: float, max_radius: int}
-        self.wave_speed = 7
+        self.wave_speed = 7.0
         self.max_wave_radius = 180
         self.wave_color = (0, 255, 255)
         self.wave_thickness = 5
@@ -27,10 +30,10 @@ class Player(GameObject):
 
         # Dash parameters
         self.is_dashing = False
-        self.dash_cooldown_ms = 3000  # 3 seconds cooldown per spec
+        self.dash_cooldown_ms = 3000  # 3 seconds cooldown
         self._next_dash_time_ms = 0
-        self.dash_duration_ms = 220  # total dash time
-        self.dash_speed = 18  # pixels per frame while dashing
+        self.dash_duration_ms = 220  # total dash time (real time)
+        self.dash_speed = 18.0       # bazowa prędkość dashu (px / klatkę przy time_scale=1)
         self.dash_dir = pygame.math.Vector2(0, 0)
         self.dash_start_time_ms = 0
         self.dash_scale = 0.8  # slightly smaller sprite during dash
@@ -39,10 +42,25 @@ class Player(GameObject):
         self.look_max_distance = 250
 
         # Ensure rect is positioned correctly relative to provided x,y as center
-        # Incoming x_pos, y_pos are treated as center for convenience
         self.rect.centerx = x_pos
         self.rect.centery = y_pos
 
+    # -------------------------------------------------
+    # Time scale (bullet-time)
+    # -------------------------------------------------
+    def set_time_scale(self, time_scale: float) -> None:
+        """
+        Ustawia skalę czasu dla playera.
+
+        Wpływa na:
+        - normalny ruch (WASD),
+        - dash (prędkość poruszania się podczas dashu).
+        """
+        self.time_scale = max(0.0, float(time_scale))
+
+    # -------------------------------------------------
+    # Input / movement
+    # -------------------------------------------------
     def _handle_input(self):
         keys = pygame.key.get_pressed()
 
@@ -57,25 +75,35 @@ class Player(GameObject):
         if keys[pygame.K_d]:
             direction.x += 1
 
+        # efektywna prędkość z bullet-time
+        effective_speed = self.speed * self.time_scale
+
         # Normalize diagonal movement so it's not faster than straight
         if direction.length() > 0:
             direction = direction.normalize()
-            self.velocity = direction * self.speed
+            self.velocity = direction * effective_speed
         else:
             self.velocity *= self.friction
 
-            if abs(self.velocity.length()) < self.speed / 5:
+            if abs(self.velocity.length()) < self.speed / 5.0:
                 self.velocity = pygame.math.Vector2(0, 0)
 
         # Apply movement and clamp to screen
-        self.rect.x = int(max(0, min(self.SCREEN_W - self.rect.width, self.rect.x + self.velocity.x)))
-        self.rect.y = int(max(0, min(self.SCREEN_H - self.rect.height, self.rect.y + self.velocity.y)))
+        self.rect.x = int(
+            max(0, min(self.SCREEN_W - self.rect.width, self.rect.x + self.velocity.x))
+        )
+        self.rect.y = int(
+            max(0, min(self.SCREEN_H - self.rect.height, self.rect.y + self.velocity.y))
+        )
 
     def _handle_look_direction(self):
         # Face towards mouse cursor left/right
         mx, my = pygame.mouse.get_pos()
         self.facing_right = mx >= self.rect.centerx
 
+    # -------------------------------------------------
+    # Dash
+    # -------------------------------------------------
     def _try_start_dash(self):
         # Left Shift triggers dash if off cooldown
         keys = pygame.key.get_pressed()
@@ -99,18 +127,26 @@ class Player(GameObject):
     def _update_dash(self):
         if not self.is_dashing:
             return
+
         now = pygame.time.get_ticks()
         elapsed = now - self.dash_start_time_ms
         if elapsed >= self.dash_duration_ms:
             self.is_dashing = False
             return
+
+        # efektywna prędkość dashu z bullet-time
+        effective_dash_speed = self.dash_speed * self.time_scale
+
         # Move along dash direction
-        self.rect.x = int(self.rect.x + self.dash_dir.x * self.dash_speed)
-        self.rect.y = int(self.rect.y + self.dash_dir.y * self.dash_speed)
+        self.rect.x = int(self.rect.x + self.dash_dir.x * effective_dash_speed)
+        self.rect.y = int(self.rect.y + self.dash_dir.y * effective_dash_speed)
         # Clamp to screen bounds
         self.rect.x = max(0, min(self.SCREEN_W - self.rect.width, self.rect.x))
         self.rect.y = max(0, min(self.SCREEN_H - self.rect.height, self.rect.y))
 
+    # -------------------------------------------------
+    # Attack waves
+    # -------------------------------------------------
     def _handle_mouse_click(self):
         pressed = pygame.mouse.get_pressed(num_buttons=3)
         if pressed[0]:  # left click
@@ -118,13 +154,15 @@ class Player(GameObject):
                 now = pygame.time.get_ticks()
                 if now >= self._next_attack_time_ms:
                     # Spawn a new sound wave at player's center
-                    self.sound_waves.append({
-                        "pos": (self.rect.centerx, self.rect.centery),
-                        "radius": 0.0,
-                        "max_radius": self.max_wave_radius,
-                    })
+                    self.sound_waves.append(
+                        {
+                            "pos": (self.rect.centerx, self.rect.centery),
+                            "radius": 0.0,
+                            "max_radius": self.max_wave_radius,
+                        }
+                    )
                     # Optionally play a sound if one is set up with key 'guitar'
-                    self.play_sound('guitar')
+                    self.play_sound("guitar")
                     # Set next allowed attack time
                     self._next_attack_time_ms = now + self.attack_cooldown_ms
             self._mouse_was_pressed = True
@@ -134,11 +172,13 @@ class Player(GameObject):
     def _update_waves(self):
         # Expand and cull finished waves
         for wave in self.sound_waves:
-            wave["radius"] += self.wave_speed
+            wave["radius"] += self.wave_speed * self.time_scale
         self.sound_waves = [w for w in self.sound_waves if w["radius"] <= w["max_radius"]]
 
+    # -------------------------------------------------
+    # Public update / draw
+    # -------------------------------------------------
     def update(self):
-        # Handle all per-frame logic
         # Dash takes precedence over normal movement
         if not self.is_dashing:
             self._handle_input()
@@ -169,7 +209,13 @@ class Player(GameObject):
         # Draw sound waves
         for wave in self.sound_waves:
             if wave["radius"] > 0:
-                pygame.draw.circle(screen, self.wave_color, wave["pos"], int(wave["radius"]), self.wave_thickness)
+                pygame.draw.circle(
+                    screen,
+                    self.wave_color,
+                    wave["pos"],
+                    int(wave["radius"]),
+                    self.wave_thickness,
+                )
 
         # Draw a small dot clamped near the player along the direction to the mouse
         mx, my = pygame.mouse.get_pos()
@@ -181,12 +227,9 @@ class Player(GameObject):
         if dist_sq == 0:
             dot_x, dot_y = cx, cy
         else:
-            # Only clamp if outside max distance
             max_d = self.look_max_distance
             max_d_sq = max_d * max_d
             if dist_sq > max_d_sq:
-                # normalize and scale
-                import math
                 d = math.sqrt(dist_sq)
                 vx *= max_d / d
                 vy *= max_d / d

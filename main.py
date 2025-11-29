@@ -67,8 +67,7 @@ class Start:
         self.clock = clock
 
         # Create BPM counter
-        self.bpm_counter = BPMCounter(WIDTH - 100, HEIGHT // 2, WIDTH, HEIGHT, bpm=120, bar_count=8)
-        # self.clock = pygame.time.Clock()
+        self.bpm_counter = BPMCounter(WIDTH - 200, HEIGHT - 50 , WIDTH, HEIGHT, bpm=120)
 
     def run(self):
         self.display.fill("green")

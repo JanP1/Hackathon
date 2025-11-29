@@ -1,43 +1,45 @@
 import pygame
+import math
 from objects.game_object import GameObject
 
 class BPMCounter(GameObject):
-    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, bpm: int = 120, bar_count: int = 8):
+    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, bpm: int = 120):
         """
-        BPM Counter with VERTICAL bars and pulsating center sprite.
+        Simple BPM Counter with moving rectangle and static rectangle.
         
         Args:
-            x_pos: X position on screen
-            y_pos: Y position on screen (center)
+            x_pos: X position on screen (center)
+            y_pos: Y position on screen (bottom pivot point)
             SCREEN_W: Screen width
             SCREEN_H: Screen height
             bpm: Beats per minute
-            bar_count: Number of bars on each side of center
         """
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, "bpm_counter")
         
         self.bpm = bpm
-        self.bar_count = bar_count
         
         # Timing
         self.beat_duration = 60000 / bpm  # milliseconds per beat
         self.current_time = 0
         self.beat_progress = 0  # 0 to 1
         
-        # Bar settings (VERTICAL)
-        self.bar_width = 150
-        self.bar_height = 20
-        self.bar_spacing = 120  # 3x the original 40
+        # Rectangle settings
+        self.rect_width = 50
+        self.rect_height = 200
         
+        self.rect_moving_width = 20
+        self.rect_moving_height = 200
+        
+        # Max angle for windshield wiper motion (in radians)
+        self.max_angle = math.pi / 3  # 60 degrees total swing
+
         # Colors
-        self.bar_color = (255, 255, 255)
-        self.active_bar_color = (255, 215, 0)  # Gold
-        self.center_color = (255, 50, 50)
+        self.static_color = (100, 100, 255)  # Blue
+        self.moving_color = (255, 100, 100)  # Red
         
-        # Center rectangle
-        self.center_size = 50
+        # Pulse effect
         self.pulse_scale = 1.0
-        self.max_pulse_scale = 1.5
+        self.max_pulse_scale = 1.3
 
         self.is_active = True
     
@@ -58,60 +60,73 @@ class BPMCounter(GameObject):
         self.current_time += delta_time
         self.beat_progress = (self.current_time % self.beat_duration) / self.beat_duration
         
-        # Pulse animation (peaks at beat)
-        if self.beat_progress < 0.2:  # Pulse at start of beat
-            self.pulse_scale = 1 + (self.max_pulse_scale - 1) * (1 - self.beat_progress / 0.2)
+        # Pulse when beat hits (beat_progress near 0)
+        center_tolerance = 0.25
+        if self.beat_progress < center_tolerance:
+            progress = self.beat_progress / center_tolerance
+            self.pulse_scale = 1.0 + (self.max_pulse_scale - 1.0) * (1.0 - progress)
         else:
             self.pulse_scale = 1.0
     
     
     def draw(self, screen):
-        """Draw the BPM counter VERTICALLY."""
+        """Draw the rectangles."""
         if not self.is_active:
             return
-            
-        # Draw bars moving towards center from TOP and BOTTOM
-        for i in range(self.bar_count):
-            # Calculate distance from center (inverted so bars move TOWARDS center)
-            bar_distance = (self.bar_count - i - 1 + (1 - self.beat_progress)) * self.bar_spacing
-            
-            # Top bars (moving down towards center)
-            bar_y_top = self.rect.y - bar_distance
-            
-            # Bottom bars (moving up towards center)
-            bar_y_bottom = self.rect.y + bar_distance
-            
-            # Determine if this is the active bar (closest to center)
-            is_active = i == (self.bar_count - 1) and self.beat_progress > 0.8
-            color = self.active_bar_color if is_active else self.bar_color
-            
-            # Draw top bar
-            bar_rect_top = pygame.Rect(
-                int(self.rect.x - self.bar_width // 2),
-                int(bar_y_top - self.bar_height // 2),
-                self.bar_width,
-                self.bar_height
-            )
-            pygame.draw.rect(screen, color, bar_rect_top)
-            
-            # Draw bottom bar
-            bar_rect_bottom = pygame.Rect(
-                int(self.rect.x - self.bar_width // 2),
-                int(bar_y_bottom - self.bar_height // 2),
-                self.bar_width,
-                self.bar_height
-            )
-            pygame.draw.rect(screen, color, bar_rect_bottom)
         
-        # Draw pulsating center rectangle
-        scaled_size = int(self.center_size * self.pulse_scale)
-        center_rect = pygame.Rect(
-            int(self.rect.x - scaled_size // 2),
-            int(self.rect.y - scaled_size // 2),
-            scaled_size,
-            scaled_size
-        )
-        pygame.draw.rect(screen, self.center_color, center_rect)
+        # Apply pulse scale
+        rect_width = int(self.rect_width * self.pulse_scale)
+        rect_height = int(self.rect_height * self.pulse_scale)
+        
+        moving_width = int(self.rect_moving_width * self.pulse_scale)
+        moving_height = int(self.rect_moving_height * self.pulse_scale)
+        
+        # Pivot point (bottom center)
+        pivot_x = self.rect.x
+        pivot_y = self.rect.y
+        
+        # Static rectangle (vertical, pivoting from bottom)
+        static_points = [
+            (pivot_x - rect_width // 2, pivot_y),  # Bottom left
+            (pivot_x + rect_width // 2, pivot_y),  # Bottom right
+            (pivot_x + rect_width // 2, pivot_y - rect_height),  # Top right
+            (pivot_x - rect_width // 2, pivot_y - rect_height),  # Top left
+        ]
+        pygame.draw.polygon(screen, self.static_color, static_points)
+        
+        # Moving rectangle (windshield wiper motion)
+        # Calculate angle based on beat progress (-max_angle to +max_angle)
+        angle = math.sin(self.beat_progress * 2 * math.pi) * self.max_angle
+        
+        # Calculate the four corners of the rotated rectangle
+        # Bottom corners stay at pivot
+        bottom_left = (pivot_x - moving_width // 2, pivot_y)
+        bottom_right = (pivot_x + moving_width // 2, pivot_y)
+        
+        # Top corners rotate around pivot
+        # Start with vertical position, then rotate
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        
+        # Left top corner
+        local_x = -moving_width // 2
+        local_y = -moving_height
+        top_left_x = pivot_x + (local_x * cos_a - local_y * sin_a)
+        top_left_y = pivot_y + (local_x * sin_a + local_y * cos_a)
+        
+        # Right top corner
+        local_x = moving_width // 2
+        local_y = -moving_height
+        top_right_x = pivot_x + (local_x * cos_a - local_y * sin_a)
+        top_right_y = pivot_y + (local_x * sin_a + local_y * cos_a)
+        
+        moving_points = [
+            bottom_left,
+            bottom_right,
+            (top_right_x, top_right_y),
+            (top_left_x, top_left_y)
+        ]
+        pygame.draw.polygon(screen, self.moving_color, moving_points)
     
     
     def is_on_beat(self, tolerance: float = 0.15) -> bool:
@@ -119,7 +134,7 @@ class BPMCounter(GameObject):
         Check if current time is close to a beat.
         
         Args:
-            tolerance: How close to beat (0.0 to 0.5, where 0.15 = 15% of beat duration)
+            tolerance: How close to beat (0.0 to 0.5)
         
         Returns:
             True if within tolerance of a beat

@@ -1,7 +1,5 @@
-import pygame
+import random
 
-from main import HEIGHT
-from objects import ranged_enemy
 from objects.player import Player
 from objects.ranged_enemy import RangedEnemy
 from objects.bpm_counter import BPMCounter
@@ -21,10 +19,34 @@ class Level_1:
         self.HEIGHT = self.screen.get_height()
 
         self.player = Player(self.WIDTH//2, self.HEIGHT//2, self.WIDTH, self.HEIGHT)
-        self.ranged_enemy = RangedEnemy(self.WIDTH//4, self.HEIGHT//4, self.WIDTH, self.HEIGHT, 0.25, self.player)
+
+        self.spawn_timer = 0
+        self.spawn_interval = 5000
 
         self.initBPM()
     
+
+    def spawnEnemies(self):
+        """Spawn an enemy at a random off-screen position."""
+        # Randomly choose which side to spawn from (0=top, 1=right, 2=bottom, 3=left)
+        side = random.randint(0, 3)
+
+        if side == 0:  # Top
+            x = random.randint(0, self.WIDTH)
+            y = -50
+        elif side == 1:  # Right
+            x = self.WIDTH + 50
+            y = random.randint(0, self.HEIGHT)
+        elif side == 2:  # Bottom
+            x = random.randint(0, self.WIDTH)
+            y = self.HEIGHT + 50
+        else:  # Left
+            x = -50
+            y = random.randint(0, self.HEIGHT)
+        
+        enemy = RangedEnemy(x, y, self.WIDTH, self.HEIGHT, 0.25, self.player)
+        self.enemies.append(enemy)
+
 
     def initBPM(self):
         self.bpm = 80
@@ -34,19 +56,33 @@ class Level_1:
 
 
     def update(self):    
-        self.bpm_counter.update(self.clock.get_time())
+        delta_time = self.clock.get_time()
+        
+        self.bpm_counter.update(delta_time)
         self.player.update()
         
-        if self.ranged_enemy.is_active and self.ranged_enemy.is_alive:
-            self.ranged_enemy.update()
+        # Update spawn timer
+        self.spawn_timer += delta_time
+        if self.spawn_timer >= self.spawn_interval:
+            self.spawnEnemies()
+            self.spawn_timer = 0
+        
+        # Update all enemies
+        for enemy in self.enemies[:]:
+            if enemy.is_active and enemy.is_alive:
+                enemy.set_target()
+                enemy.update()
+            elif not enemy.is_alive:
+                self.enemies.remove(enemy)
 
         if self.bpm_counter.is_on_beat():
             if not self.beat_triggered:
                 self.beat_triggered = True
                 # ============== TUTAJ ROBIMY METODY on_beat() KAŻDEGO ===============
                 # ================ ELEMENTU KTÓRY MA DZIAŁAĆ NA BEAT =================
-                if self.ranged_enemy.is_active and self.ranged_enemy.is_alive:
-                    self.ranged_enemy.on_beat()
+                for enemy in self.enemies:
+                    if enemy.is_active and enemy.is_alive:
+                        enemy.on_beat()
                 # ====================================================================
         else:
             self.beat_triggered = False
@@ -56,8 +92,9 @@ class Level_1:
         self.screen.fill("green")
         self.player.draw(self.screen)
 
-        if self.ranged_enemy.is_active and self.ranged_enemy.is_alive:
-            self.ranged_enemy.draw(self.screen)
+        for enemy in self.enemies:
+            if enemy.is_active and enemy.is_alive:
+                enemy.draw(self.screen)
         
         self.bpm_counter.draw(self.screen)
 

@@ -16,19 +16,31 @@ class RangedEnemy(Enemy):
 
         self.target_x = None
         self.target_y = None
+
         self.keep_distance = 400  # Keep this distance from target
 
         self.is_alive = True
         self.is_active = True
     
+
+    def projectile_check_collision(self):
+        for projectile in self.projectiles[:]:
+            px = int(projectile.get('x', 0))
+            py = int(projectile.get('y', 0))
+
+            if self.target.rect.collidepoint(px, py):
+                self.target.take_damage(projectile.get('damage', 0))
+                print("PLAYER HIT")
+                self.projectiles.remove(projectile) 
     
+
     def set_target(self):
         """Set target to keep distance from (e.g., player position)."""
         self.target_x = self.target.rect.centerx
         self.target_y = self.target.rect.centery
     
     
-    def update_behavior(self, delta_time: float):
+    def update_behavior(self):
         """Move to keep distance from target, update projectiles."""
         # Keep distance from target
         if self.target_x is not None and self.target_y is not None:
@@ -100,7 +112,8 @@ class RangedEnemy(Enemy):
     
     def update(self):
         self.set_target()      
-        self.update_behavior(pygame.time.get_ticks())  
+        self.update_behavior()  
+        self.projectile_check_collision()
 
     def draw(self, screen):
         """Draw enemy and projectiles."""

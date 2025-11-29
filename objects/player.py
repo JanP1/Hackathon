@@ -7,6 +7,12 @@ class Player(GameObject):
     def __init__(self, x_pos: int, y_pos: int, screen_w: int, screen_h: int, name: str = "player"):
         super().__init__(x_pos, y_pos, screen_w, screen_h, name)
 
+        self.is_alive = True
+
+        # Health system
+        self.max_health = 100
+        self.current_health = self.max_health
+
         # Movement parameters
         self.speed = 5
         self.friction = 0.9
@@ -17,13 +23,30 @@ class Player(GameObject):
         self.wave_speed = 7
         self.max_wave_radius = 180
         self.wave_color = (0, 255, 255)
+        # Kolor fali, gdy kliknięcie nastąpi "on beat" (wymóg: czerwona)
+        self.on_beat_wave_color = (255, 0, 0)
         self.wave_thickness = 5
+        # Parametry wizualne fali dla kliknięcia on-beat (dłuższa i grubsza)
+        self.on_beat_max_wave_radius = 250
+        self.on_beat_wave_thickness = 12
 
         # Click handling to avoid spawning too many waves at once
         self._mouse_was_pressed = False
         # Attack cooldown (milliseconds)
-        self.attack_cooldown_ms = 2000  # 2 seconds
+        self.attack_cooldown_ms = 700
         self._next_attack_time_ms = 0
+
+        # Beat / damage system (mirrors Enemy logic where applicable)
+        self.beat_counter = 0
+        # Base damage of a sound wave and a cumulative bonus increased on beat-clicks
+        self.base_wave_damage = 10
+        self.wave_damage_bonus = 0
+
+        # Flaga była używana do pokolorowania następnej fali; nieużywana przy natychmiastowym sprawdzaniu
+        self._on_beat_click_pending = False
+
+        # Funkcja sprawdzająca czy w tej klatce jest beat (wstrzykiwana z zewnątrz)
+        self._on_beat_checker = None
 
         # Dash parameters
         self.is_dashing = False
@@ -117,12 +140,32 @@ class Player(GameObject):
             if not self._mouse_was_pressed:
                 now = pygame.time.get_ticks()
                 if now >= self._next_attack_time_ms:
+                    # Sprawdź w chwili kliknięcia, czy jest beat
+                    on_beat_now = False
+                    if callable(self._on_beat_checker):
+                        try:
+                            on_beat_now = bool(self._on_beat_checker())
+                        except Exception:
+                            on_beat_now = False
+
+                    # Ustal parametry fali: jeśli on-beat, fala jest dłuższa i ma większe obramowanie
+                    max_radius = self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
+                    thickness = self.on_beat_wave_thickness if on_beat_now else self.wave_thickness
+                    color = self.wave_color  # bez zmiany koloru
                     # Spawn a new sound wave at player's center
                     self.sound_waves.append({
                         "pos": (self.rect.centerx, self.rect.centery),
                         "radius": 0.0,
-                        "max_radius": self.max_wave_radius,
+                        "max_radius": max_radius,
+                        "color": color,
+                        "thickness": thickness,
+                        # Store damage so other systems can read it
+                        "damage": self.base_wave_damage + self.wave_damage_bonus,
                     })
+                    # Jeśli kliknięto dokładnie w beat, zwiększ licznik i bonus obrażeń od razu
+                    if on_beat_now:
+                        self.beat_counter += 1
+                        self.wave_damage_bonus += 15
                     # Optionally play a sound if one is set up with key 'guitar'
                     self.play_sound('guitar')
                     # Set next allowed attack time
@@ -131,11 +174,28 @@ class Player(GameObject):
         else:
             self._mouse_was_pressed = False
 
+    def on_beat(self):
+        """Wywoływane z main_copy.py w momencie uderzenia beatu.
+        W nowej logice sprawdzamy beat w momencie kliknięcia, więc tutaj nie modyfikujemy obrażeń.
+        """
+        if not self.is_alive:
+            return
+        # Zachowujemy metodę dla kompatybilności, ale bez efektu ubocznego
+        return
+
+    def set_on_beat_checker(self, checker_fn):
+        """Wstrzykuje funkcję zwracającą True/False czy aktualnie jest beat.
+        Np. przekazać BPMCounter.is_on_beat.
+        """
+        self._on_beat_checker = checker_fn
+
     def _update_waves(self):
         # Expand and cull finished waves
         for wave in self.sound_waves:
             wave["radius"] += self.wave_speed
         self.sound_waves = [w for w in self.sound_waves if w["radius"] <= w["max_radius"]]
+
+
 
     def update(self):
         # Handle all per-frame logic
@@ -169,7 +229,13 @@ class Player(GameObject):
         # Draw sound waves
         for wave in self.sound_waves:
             if wave["radius"] > 0:
-                pygame.draw.circle(screen, self.wave_color, wave["pos"], int(wave["radius"]), self.wave_thickness)
+                pygame.draw.circle(
+                    screen,
+                    wave.get("color", self.wave_color),
+                    wave["pos"],
+                    int(wave["radius"]),
+                    wave.get("thickness", self.wave_thickness)
+                )
 
         # Draw a small dot clamped near the player along the direction to the mouse
         mx, my = pygame.mouse.get_pos()
@@ -193,3 +259,62 @@ class Player(GameObject):
             dot_x = int(cx + vx)
             dot_y = int(cy + vy)
         pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
+
+        # UI: pasek życia w dolnej części ekranu
+        self._draw_attack_cooldown_bar(screen)
+
+    def _draw_attack_cooldown_bar(self, screen):
+        """Rysuje pasek życia gracza (zamiast paska cooldownu)."""
+        # Wymiary i pozycja paska (centrowany przy dolnej krawędzi)
+        bar_width = self.SCREEN_W / 3
+        bar_height = 30
+        bar_y_offset = self.SCREEN_H / 14
+        x = int(self.SCREEN_W / 2 - bar_width / 2)
+        y = int(self.SCREEN_H - bar_y_offset)
+
+        # Tło paska (czerwone tło zdrowia)
+        pygame.draw.rect(screen, (120, 20, 20), (x, y, int(bar_width), bar_height))
+
+        # Procent zdrowia
+        if self.max_health > 0:
+            progress = max(0.0, min(1.0, self.current_health / self.max_health))
+        else:
+            progress = 0.0
+
+        # Wypełnienie paska (zielone zdrowie)
+        fill_width = int(bar_width * progress)
+        if fill_width > 0:
+            pygame.draw.rect(screen, (0, 200, 0), (x, y, fill_width, bar_height))
+
+        # Obramowanie paska
+        pygame.draw.rect(screen, (255, 255, 255), (x, y, int(bar_width), bar_height), 2)
+
+    # ==== Health API ====
+    def take_damage(self, amount: int):
+        """Zadaje obrażenia graczowi i obsługuje śmierć."""
+        if not self.is_alive:
+            return
+        try:
+            dmg = int(amount)
+        except Exception:
+            dmg = 0
+        if dmg <= 0:
+            return
+        self.current_health -= dmg
+        if self.current_health <= 0:
+            self.current_health = 0
+            self.is_alive = False
+
+    def heal(self, amount: int):
+        if not self.is_alive:
+            return
+        try:
+            val = int(amount)
+        except Exception:
+            val = 0
+        if val <= 0:
+            return
+        self.current_health = min(self.max_health, self.current_health + val)
+
+    def get_health_percentage(self) -> float:
+        return 0.0 if self.max_health <= 0 else max(0.0, min(1.0, self.current_health / self.max_health))

@@ -75,6 +75,9 @@ class Start:
         
         # Create player
         self.player = Player(WIDTH // 2, HEIGHT // 2, WIDTH, HEIGHT, "player")
+        # Wstrzykujemy checker beatu, by Player mógł sprawdzać on-beat w momencie kliknięcia
+        if hasattr(self.player, 'set_on_beat_checker'):
+            self.player.set_on_beat_checker(self.bpm_counter.is_on_beat)
         
         # Create enemies
         self.enemies = []
@@ -105,6 +108,8 @@ class Start:
         if self.bpm_counter.is_on_beat():
             if not self.beat_triggered:
                 self.beat_triggered = True
+                # Trigger beat for player (allows beat-click bonus)
+                self.player.on_beat()
                 # Trigger beat for all enemies
                 for enemy in self.enemies:
                     enemy.on_beat()
@@ -118,6 +123,14 @@ class Start:
             # Set target to player position
             if isinstance(enemy, RangedEnemy):
                 enemy.set_target(self.player.rect.centerx, self.player.rect.centery)
+
+                # Sprawdź kolizje pocisków z graczem i zadaj obrażenia
+                for projectile in enemy.projectiles[:]:
+                    px = int(projectile.get('x', 0))
+                    py = int(projectile.get('y', 0))
+                    if self.player.rect.collidepoint(px, py):
+                        self.player.take_damage(projectile.get('damage', 0))
+                        enemy.projectiles.remove(projectile)
         
         # Draw player
         self.player.draw(self.display)

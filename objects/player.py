@@ -25,6 +25,16 @@ class Player(GameObject):
         self.attack_cooldown_ms = 2000  # 2 seconds
         self._next_attack_time_ms = 0
 
+        # Dash parameters
+        self.is_dashing = False
+        self.dash_cooldown_ms = 3000  # 3 seconds cooldown per spec
+        self._next_dash_time_ms = 0
+        self.dash_duration_ms = 220  # total dash time
+        self.dash_speed = 18  # pixels per frame while dashing
+        self.dash_dir = pygame.math.Vector2(0, 0)
+        self.dash_start_time_ms = 0
+        self.dash_scale = 0.8  # slightly smaller sprite during dash
+
         # Max distance for look indicator (cursor dot) from player center
         self.look_max_distance = 250
 
@@ -66,6 +76,41 @@ class Player(GameObject):
         mx, my = pygame.mouse.get_pos()
         self.facing_right = mx >= self.rect.centerx
 
+    def _try_start_dash(self):
+        # Left Shift triggers dash if off cooldown
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LSHIFT] and not self.is_dashing:
+            now = pygame.time.get_ticks()
+            if now >= self._next_dash_time_ms:
+                cx, cy = self.rect.centerx, self.rect.centery
+                mx, my = pygame.mouse.get_pos()
+                dx = mx - cx
+                dy = my - cy
+                vec = pygame.math.Vector2(dx, dy)
+                if vec.length_squared() == 0:
+                    vec = pygame.math.Vector2(1 if self.facing_right else -1, 0)
+                else:
+                    vec = vec.normalize()
+                self.dash_dir = vec
+                self.is_dashing = True
+                self.dash_start_time_ms = now
+                self._next_dash_time_ms = now + self.dash_cooldown_ms
+
+    def _update_dash(self):
+        if not self.is_dashing:
+            return
+        now = pygame.time.get_ticks()
+        elapsed = now - self.dash_start_time_ms
+        if elapsed >= self.dash_duration_ms:
+            self.is_dashing = False
+            return
+        # Move along dash direction
+        self.rect.x = int(self.rect.x + self.dash_dir.x * self.dash_speed)
+        self.rect.y = int(self.rect.y + self.dash_dir.y * self.dash_speed)
+        # Clamp to screen bounds
+        self.rect.x = max(0, min(self.SCREEN_W - self.rect.width, self.rect.x))
+        self.rect.y = max(0, min(self.SCREEN_H - self.rect.height, self.rect.y))
+
     def _handle_mouse_click(self):
         pressed = pygame.mouse.get_pressed(num_buttons=3)
         if pressed[0]:  # left click
@@ -94,14 +139,32 @@ class Player(GameObject):
 
     def update(self):
         # Handle all per-frame logic
-        self._handle_input()
+        # Dash takes precedence over normal movement
+        if not self.is_dashing:
+            self._handle_input()
         self._handle_look_direction()
+        # Dash input can be attempted every frame
+        self._try_start_dash()
+        # Update dash movement if active
+        self._update_dash()
         self._handle_mouse_click()
         self._update_waves()
 
     def draw(self, screen):
-        # Draw the player (uses facing_right from base class)
-        super().draw(screen)
+        # Draw the player (uses facing_right from base class). If dashing, rotate 360deg and scale down slightly.
+        if self.is_dashing:
+            # Choose sprite based on facing
+            base_sprite = self.sprite if self.facing_right else self.sprite_flipped
+            # Compute rotation progress 0..360 over dash duration
+            now = pygame.time.get_ticks()
+            elapsed = now - self.dash_start_time_ms
+            t = max(0.0, min(1.0, elapsed / (self.dash_duration_ms if self.dash_duration_ms > 0 else 1)))
+            angle = 360 * t if self.facing_right else -360 * t
+            spun = pygame.transform.rotozoom(base_sprite, -angle, self.dash_scale)
+            spun_rect = spun.get_rect(center=self.rect.center)
+            screen.blit(spun, spun_rect)
+        else:
+            super().draw(screen)
 
         # Draw sound waves
         for wave in self.sound_waves:
@@ -123,6 +186,7 @@ class Player(GameObject):
             max_d_sq = max_d * max_d
             if dist_sq > max_d_sq:
                 # normalize and scale
+                import math
                 d = math.sqrt(dist_sq)
                 vx *= max_d / d
                 vy *= max_d / d

@@ -2,7 +2,7 @@ import pygame
 import sys
 
 # tutaj dodajemy elementy
-# from objects.game_object import GameObject
+from objects.bpm_counter import BPMCounter
 
 WIDTH = 1920
 HEIGHT = 1080
@@ -25,7 +25,7 @@ class Game:
         # =============================================================
         # Tutaj definiowane poziomy np -> self.level1 = Level1(self.screen, self.game_state_manager)
 
-        self.start = Start(self.screen, self.game_state_manager)
+        self.start = Start(self.screen, self.game_state_manager, self.clock)
 
 
         # uzupełniane nazwami poziomu i wartoscia np self.states = {"level1":self.level1}
@@ -61,16 +61,29 @@ class GameStateManager:
 
 
 class Start:
-    def __init__(self, display, game_state_manager) -> None:
+    def __init__(self, display, game_state_manager, clock) -> None:
         self.display = display
         self.game_state_manager = game_state_manager
+        self.clock = clock
+
+        # Create BPM counter
+        self.bpm_counter = BPMCounter(WIDTH - 100, HEIGHT // 2, WIDTH, HEIGHT, bpm=120, bar_count=8)
+        # self.clock = pygame.time.Clock()
 
     def run(self):
         self.display.fill("green")
 
-        # jak wywoływać i rysować elementy 
-        # game_object.update()
-        # game_object.draw(self.display)
+        # Get delta time in milliseconds
+        delta_time = self.clock.get_time()
+        
+        # Update and draw BPM counter
+        self.bpm_counter.update(delta_time)
+        self.bpm_counter.draw(self.display)
+        
+        # Optional: Check if on beat for gameplay mechanics
+        if self.bpm_counter.is_on_beat():
+            # Player can perform rhythm actions here
+            pass
 
 
 

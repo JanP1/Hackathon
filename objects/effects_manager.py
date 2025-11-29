@@ -10,7 +10,8 @@ class EffectsManager:
     Trzyma:
     - waves_data: fale (np. od gracza),
     - bullet_objects: referencje do pocisków,
-    - bullets_data: zrzut (x, y, vx, vy) gotowy dla shadera.
+    - bullets_data: zrzut (x, y, vx, vy) gotowy dla shadera (podstawowa wersja),
+    - (dodatkowo) get_bullets_extended_data() zwraca też trail_length i trail_half_width.
     """
     def __init__(self):
         # Dane fali: (cx, cy, start_time_ms, thickness)
@@ -18,7 +19,7 @@ class EffectsManager:
         self.wave_thickness: float = 40.0
         self.wave_max_lifetime_ms: float = 1000.0  # Jak długo fala żyje
 
-        # Referencje do pocisków (np. PlayerBullet)
+        # Referencje do pocisków (np. PlayerBullet, EnemyProjectile)
         self.bullet_objects: List[Any] = []
 
         # Dane pocisków: (x, y, vx, vy) – aktualizowane na podstawie bullet_objects
@@ -59,6 +60,9 @@ class EffectsManager:
         """
         Buduje bullets_data na podstawie aktualnych obiektów bullet_objects.
         Filtruje martwe/niekompletne pociski.
+
+        Uwaga: ta wersja trzyma stary format (x, y, vx, vy) – dla kompatybilności.
+        Rozszerzone dane są dostępne w get_bullets_extended_data().
         """
         new_data: List[Tuple[float, float, float, float]] = []
         new_refs: List[Any] = []
@@ -78,15 +82,49 @@ class EffectsManager:
             new_refs.append(b)
 
         self.bullets_data = new_data
-        self.bullet_objects = new_refs  # czyścimy referencje do martwych / niekompletnych
+        # czyścimy referencje do martwych / niekompletnych
+        self.bullet_objects = new_refs
 
     def get_bullets_data(self) -> List[Tuple[float, float, float, float]]:
         """
-        Zwraca dane o pociskach dla shadera.
+        Zwraca dane o pociskach dla shadera (podstawowy format).
         Dane są każdorazowo synchronizowane z bullet_objects.
+
+        Format: (x, y, vx, vy)
         """
         self._sync_bullets_data()
         return self.bullets_data
+
+    def get_bullets_extended_data(self) -> List[Tuple[float, float, float, float, float, float]]:
+        """
+        Rozszerzona wersja danych o pociskach.
+
+        Zwraca listę krotek:
+            (x, y, vx, vy, trail_length, trail_half_width)
+
+        - jeśli pocisk nie ma trail_length / trail_half_width,
+          używane są sensowne domyślne wartości.
+        """
+        extended: List[Tuple[float, float, float, float, float, float]] = []
+
+        for b in self.bullet_objects:
+            # jeśli jest flaga alive – filtruj martwe
+            if hasattr(b, "alive") and not b.alive:
+                continue
+
+            # wymagane atrybuty pozycji/prędkości
+            if not (hasattr(b, "x") and hasattr(b, "y") and hasattr(b, "vx") and hasattr(b, "vy")):
+                continue
+
+            # długość i szerokość trójkąta – jeśli brak, daj domyślne
+            base_length = float(getattr(b, "trail_length", 160.0))
+            base_half_width = float(getattr(b, "trail_half_width", 30.0))
+
+            extended.append(
+                (float(b.x), float(b.y), float(b.vx), float(b.vy), base_length, base_half_width)
+            )
+
+        return extended
 
     # -------------------------------------------------
     # Update globalny

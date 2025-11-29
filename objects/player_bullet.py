@@ -8,8 +8,8 @@ class PlayerBullet:
     Pocisk gracza:
     - leci w zadanym kierunku z prędkością vx, vy (px/s)
     - kolizja jako okrąg (get_rect)
-    - zniekształcenie obrazu robi shader/efekt trójkąta (może brać
-      trail_length / trail_half_width z tego obiektu).
+    - zniekształcenie obrazu robi shader OpenGL / efekt postprocessingu,
+      więc tutaj rysujemy TYLKO zwykłą kulkę.
     """
 
     def __init__(
@@ -38,9 +38,8 @@ class PlayerBullet:
         self.age: float = 0.0
 
         # =====================================================
-        # PARAMETRY TRÓJKĄTA ZA POCISKIEM (DLA GRACZA – SZEROKO)
+        # PARAMETRY TRÓJKĄTA ZA POCISKIEM (GRACZ = SZERZEJ / DŁUŻEJ)
         # =====================================================
-        # Domyślnie: trochę dłuższy i szerszy niż u wroga
         if trail_length is None:
             # np. ~14 * 14 = 196 px
             self.trail_length = float(self.radius) * 14.0

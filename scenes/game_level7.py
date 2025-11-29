@@ -103,10 +103,18 @@ class Game(BaseLevel):
         # SPECYFICZNE DLA LEVEL7
         # ------------------------
 
-        # jeden RangedEnemy na start
-        ranged = RangedEnemy(600, 400, SCREEN_WIDTH, SCREEN_HEIGHT)
+                # jeden RangedEnemy na start – od razu z targetem = player
+        ranged = RangedEnemy(
+            600,
+            400,
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT,
+            1.0,            # scale
+            self.player,    # target
+        )
         ranged.set_attack_cooldown(4)  # co 4 beaty
         self.add_enemy(ranged)         # ustawia mu time_scale + effects_manager
+
 
         # pociski gracza (specjal skill – prawy przycisk myszy)
         self.player_bullets: list[PlayerBullet] = []

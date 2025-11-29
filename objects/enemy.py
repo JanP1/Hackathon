@@ -120,7 +120,7 @@ class Enemy(GameObject):
         
         # Draw attack indicator if attacking
         if self.is_attacking:
-            self.draw_attack_indicator(screen)
+            self.draw_attack(screen)
     
     
     def draw_health_bar(self, screen):
@@ -144,13 +144,6 @@ class Enemy(GameObject):
                         (bar_x, bar_y, bar_width, bar_height), 1)
     
     
-    def draw_attack_indicator(self, screen):
-        """Draw visual indicator when attacking."""
-        # Red flash around enemy
-        flash_rect = self.rect.inflate(10, 10)
-        pygame.draw.rect(screen, (255, 0, 0), flash_rect, 3)
-    
-    
     @abstractmethod
     def update_behavior(self, delta_time: float):
         """Update enemy-specific behavior. Override in subclasses."""
@@ -160,6 +153,11 @@ class Enemy(GameObject):
     @abstractmethod
     def on_attack(self):
         """Called when enemy attacks. Override in subclasses."""
+        pass
+
+    @abstractmethod
+    def draw_attack(self, screen):
+        """Draws enemies attack. Override in subclasses."""
         pass
     
     

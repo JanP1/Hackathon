@@ -8,7 +8,7 @@ class Start:
         self.clock = clock
 
     def update(self):
-       print("chuj")
+       print("8==========>")
        
         
     def draw(self):

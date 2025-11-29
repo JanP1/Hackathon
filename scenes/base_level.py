@@ -1,10 +1,11 @@
+from abc import abstractmethod
 import random
 
 from objects.player import Player
 from objects.ranged_enemy import RangedEnemy
 from objects.bpm_counter import BPMCounter
 
-
+# klasa bazowa poziomu, posiada BPM, podstawowy spawner przeciwników, update i draw
 class BaseLevel:
     def __init__(self, screen, game_state_manager, clock, bpm: int = 80) -> None:
         self.name = "Level_Test"
@@ -24,7 +25,7 @@ class BaseLevel:
 
         self.initBPM(bpm)
     
-
+    @abstractmethod
     def spawnEnemies(self):
         """Spawn an enemy at a random off-screen position."""
         # Randomly choose which side to spawn from (0=top, 1=right, 2=bottom, 3=left)
@@ -54,10 +55,27 @@ class BaseLevel:
         self.beat_triggered = False
 
 
+    @abstractmethod
+    def level_specific_functions(self):
+        """
+        Placeholder for level-specific functionality.
+        Override this method in child classes to add custom level mechanics.
+        
+        Examples:
+        - Special enemy spawn patterns
+        - Level-specific obstacles
+        - Custom power-ups
+        - Boss mechanics
+        - Environmental hazards
+        """
+        pass
+
+
     def update(self):    
         delta_time = self.clock.get_time()
         
         self.bpm_counter.update(delta_time)
+        self.level_specific_functions()
         self.player.update()
         
         # Update spawn timer

@@ -5,8 +5,8 @@ from objects.player import Player
 # tutaj dodajemy elementy
 # from objects.game_object import GameObject
 
-WIDTH = 1920
-HEIGHT = 1080
+WIDTH = 1920 * 0.6
+HEIGHT = 1080 * 0.6
 
 FPS = 60
 

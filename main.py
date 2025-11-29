@@ -1,10 +1,19 @@
 import pygame
 import sys
 
+# tutaj dodajemy elementy
+# from objects.game_object import GameObject
+
 WIDTH = 1920
 HEIGHT = 1080
 
 FPS = 60
+
+# jak używać spriteów obiektu gry
+# game_object = GameObject(10, 10, WIDTH, HEIGHT, "rafal")
+# sprite_dict = {"mike": "assets/pictures/default_mike.png"}
+# game_object.init_sprites(sprite_dict)
+# game_object.set_sprite("mike")
 
 class Game:
     def __init__(self) -> None:
@@ -58,6 +67,10 @@ class Start:
 
     def run(self):
         self.display.fill("green")
+
+        # jak wywoływać i rysować elementy 
+        # game_object.update()
+        # game_object.draw(self.display)
 
 
 

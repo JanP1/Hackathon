@@ -1,5 +1,6 @@
 import pygame
 import sys
+from TestLevel.test_level import TestLevel
 
 # tutaj dodajemy elementy
 # from objects.game_object import GameObject
@@ -28,10 +29,11 @@ class Game:
         # Tutaj definiowane poziomy np -> self.level1 = Level1(self.screen, self.game_state_manager)
 
         self.start = Start(self.screen, self.game_state_manager)
+        self.test_level = TestLevel(self.screen, self.game_state_manager)
 
 
         # uzupełniane nazwami poziomu i wartoscia np self.states = {"level1":self.level1}
-        self.states = {"start": self.start,}
+        self.states = {"start": self.start, "test_level": self.test_level}
 
         # =============================================================
 
@@ -39,10 +41,6 @@ class Game:
 
     def run(self):
         while True:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
             self.states[self.game_state_manager.get_state()].run()
             pygame.display.update()
             self.clock.tick(FPS)
@@ -69,6 +67,14 @@ class Start:
 
     def run(self):
         self.display.fill("green")
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    self.game_state_manager.set_state("test_level")
+
 
         # jak wywoływać i rysować elementy 
         # game_object.update()

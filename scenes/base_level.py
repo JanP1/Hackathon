@@ -5,11 +5,10 @@ from objects.ranged_enemy import RangedEnemy
 from objects.bpm_counter import BPMCounter
 
 
-class Level_1:
-    def __init__(self, screen, game_state_manager, clock) -> None:
-        self.name = "Level1"
+class BaseLevel:
+    def __init__(self, screen, game_state_manager, clock, bpm: int = 80) -> None:
+        self.name = "Level_Test"
         self.clock = clock
-
         self.enemies = []
 
         self.screen = screen
@@ -23,7 +22,7 @@ class Level_1:
         self.spawn_timer = 0
         self.spawn_interval = 5000
 
-        self.initBPM()
+        self.initBPM(bpm)
     
 
     def spawnEnemies(self):
@@ -48,8 +47,8 @@ class Level_1:
         self.enemies.append(enemy)
 
 
-    def initBPM(self):
-        self.bpm = 80
+    def initBPM(self, bpm: int = 80):
+        self.bpm = bpm
         self.bpm_counter = BPMCounter(self.WIDTH - 200, self.HEIGHT - 50, self.WIDTH, self.HEIGHT, bpm = self.bpm)
         self.last_beat_time = 0
         self.beat_triggered = False

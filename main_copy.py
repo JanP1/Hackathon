@@ -3,7 +3,7 @@ import sys
 
 #=========== SCENES IMPORTS ============
 from scenes.start import Start
-from scenes.level_test import Level_1
+from scenes.base_level import BaseLevel
 
 
 WIDTH = 1920
@@ -23,7 +23,7 @@ class Game:
         # Tutaj definiowane poziomy np -> self.level1 = Level1(self.screen, self.game_state_manager)
 
         self.start_scene = Start(self.screen, self.game_state_manager, self.clock)
-        self.level_test_scene = Level_1(self.screen, self.game_state_manager, self.clock)
+        self.level_test_scene = BaseLevel(self.screen, self.game_state_manager, self.clock)
 
         # uzupełniane nazwami poziomu i wartoscia np self.states = {"level1":self.level1}
         self.states = {

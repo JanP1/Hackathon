@@ -1,15 +1,15 @@
-import math
-import pygame
+# objects/player_bullet.py
 
-from objects.smoke import SmokeTrail  # korzystamy z Twojego smoke.py
+import pygame
 
 
 class PlayerBullet:
     """
     Pocisk gracza:
     - leci w zadanym kierunku z prędkością vx, vy (px/s)
-    - generuje dym (SmokeTrail) za sobą
-    - ma prostą kolizję jako okrąg (get_rect())
+    - kolizja jako okrąg (get_rect)
+    - zniekształcenie obrazu robi już shader OpenGL (gl_postprocess),
+      więc tutaj rysujemy TYLKO zwykłą kulkę.
     """
 
     def __init__(
@@ -25,7 +25,7 @@ class PlayerBullet:
         self.y = float(y)
         self.vx = float(vx)
         self.vy = float(vy)
-        self.radius = radius
+        self.radius = int(radius)
         self.color = color
 
         # żyje / martwy (po trafieniu lub końcu życia)
@@ -35,16 +35,10 @@ class PlayerBullet:
         self.max_lifetime: float = 2.5
         self.age: float = 0.0
 
-        # ślad dymu za pociskiem
-        self.trail = SmokeTrail(border=0)
-
     def update(self, dt: float) -> None:
         """
         dt – czas w sekundach (już zeskalowany time_scale z gry).
         """
-        # nawet jak pocisk już "nie żyje", chcemy jeszcze wygasić dym
-        self.trail.update()
-
         if not self.alive:
             return
 
@@ -54,17 +48,11 @@ class PlayerBullet:
         self.x += self.vx * dt
         self.y += self.vy * dt
 
-        # dym – kierunek przeciwny do ruchu (albo ten sam, SmokeTrail i tak normalizuje)
-        self.trail.add_particle(self.x, self.y, self.vx, self.vy)
-
         # limit życia
         if self.age > self.max_lifetime:
             self.alive = False
 
     def draw(self, surface: pygame.Surface) -> None:
-        # najpierw rysujemy dym (distortion)
-        self.trail.draw(surface)
-
         # samą kulkę tylko jeśli jeszcze "żyje"
         if not self.alive:
             return

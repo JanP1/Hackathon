@@ -273,9 +273,10 @@ class Game:
         # kolizje pocisków z wrogami
         self._handle_bullet_enemy_collisions()
 
-        # sprzątanie pocisków (zostawiamy te, które jeszcze mają dym)
+        # sprzątanie pocisków – zostawiamy tylko żywe
+        # (dym/efekt distort jest w PlayerBullet, nie ma już .trail)
         self.player_bullets = [
-            b for b in self.player_bullets if b.alive or len(b.trail.particles) > 0
+            b for b in self.player_bullets if b.alive
         ]
 
         # --- Enemies ---
@@ -437,13 +438,36 @@ level1_player_speed = 400.0
 level1_bg_color = (10, 40, 90)
 
 
+# -----------------------------
+# Standalone test – z postprocess GL
+# -----------------------------
+
+level1_player_speed = 400.0
+level1_bg_color = (10, 40, 90)
+
+
 if __name__ == "__main__":
     pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("Level 7 - GL postprocess")
+
+    # okno z kontekstem OpenGL
+    screen = pygame.display.set_mode(
+        (SCREEN_WIDTH, SCREEN_HEIGHT),
+        pygame.OPENGL | pygame.DOUBLEBUF,
+    )
+
     clock = pygame.time.Clock()
 
+    # offscreen surface, na którym rysuje cała gra
+    game_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT)).convert()
+
+    # postprocess GL
+    from gl_postprocess import GLPostProcessor
+    gl_post = GLPostProcessor(SCREEN_WIDTH, SCREEN_HEIGHT)
+
+    # UWAGA: do Game przekazujemy game_surface jako "screen"
     game = Game(
-        screen=screen,
+        screen=game_surface,
         clock=clock,
         level_name="level7",
         player_speed=level1_player_speed,
@@ -458,7 +482,29 @@ if __name__ == "__main__":
             if event.type == pygame.QUIT:
                 running = False
 
+        # logika + rysowanie NA game_surface (CPU)
         game.run_frame(dt, events)
+
+        # zbieramy dane o pociskach (pozycja + kierunek)
+        bullets_data: list[tuple[float, float, float, float]] = []
+        for b in game.player_bullets:
+            if not getattr(b, "alive", True):
+                continue
+            # zakładam, że PlayerBullet ma pola x, y, vx, vy
+            bullets_data.append((b.x, b.y, b.vx, b.vy))
+
+        # dane o falach z playera (pos, radius, thickness)
+        waves_data: list[tuple[float, float, float, float]] = []
+        if hasattr(game, "player") and hasattr(game.player, "sound_waves"):
+            thickness = getattr(game.player, "wave_thickness", 40.0)
+            for w in game.player.sound_waves:
+                cx, cy = w["pos"]
+                radius = w["radius"]
+                waves_data.append((float(cx), float(cy), float(radius), float(thickness)))
+
+        # render postprocess (GPU) na ekran
+        gl_post.render(game_surface, bullets_data, waves_data)
+
         pygame.display.flip()
 
     game.stop_audio()

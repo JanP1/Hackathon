@@ -38,7 +38,7 @@ from objects.debugHUD import Level1DebugHUD          # jw.
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
 FPS = 60
-MUSIC_START_DELAY_SEC = 3.0
+MUSIC_START_DELAY_SEC = 1.3
 
 SOUNDS_DIR = BASE_DIR / "assets" / "sounds"
 BIT_MID_PATH = SOUNDS_DIR / "bit.mid"
@@ -157,8 +157,9 @@ class Game(BaseLevel):
                     for b_data in data:
                         bx = b_data["x"]
                         by = b_data["y"]
+                        b_type = b_data.get("type", "house.png")
                         # Opcjonalnie scale, type itp.
-                        b = Building(bx, by, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0)
+                        b = Building(bx, by, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0, sprite_name=b_type)
                         if self.camera:
                             b.camera = self.camera
                         self.buildings.append(b)

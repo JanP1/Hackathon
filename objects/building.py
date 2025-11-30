@@ -2,16 +2,19 @@ import pygame
 from objects.game_object import GameObject
 
 class Building(GameObject):
-    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float = 1.0):
+    def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float = 1.0, sprite_name: str = "house.png"):
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale, "building")
         
         # Load sprite
+        sprite_path = f"assets/pictures/buildings/{sprite_name}"
         try:
-            self.sprite = pygame.image.load("assets/pictures/buildings/house.png").convert_alpha()
+            self.sprite = pygame.image.load(sprite_path).convert_alpha()
         except FileNotFoundError:
-            print("Warning: assets/pictures/buildings/house.png not found, using default.")
-            # Fallback is handled by GameObject default sprite, but we want to ensure we have something
-            pass
+            print(f"Warning: {sprite_path} not found, trying default house.png.")
+            try:
+                self.sprite = pygame.image.load("assets/pictures/buildings/house.png").convert_alpha()
+            except:
+                pass # GameObject default
 
         if self.scale != 1.0:
             w = self.sprite.get_width()

@@ -41,14 +41,29 @@ def main():
         bg_img = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
         bg_img.fill((50, 100, 50))
 
-    # Load Building Sprite
-    house_path = BUILDINGS_DIR / "house.png"
-    try:
-        house_img = pygame.image.load(str(house_path)).convert_alpha()
-    except Exception as e:
-        print(f"Error loading house: {e}")
-        house_img = pygame.Surface((100, 100))
-        house_img.fill(RED)
+    # Load Building Images
+    building_images = {}
+    building_names = []
+    
+    if BUILDINGS_DIR.exists():
+        for f in BUILDINGS_DIR.iterdir():
+            if f.is_file() and f.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+                try:
+                    img = pygame.image.load(str(f)).convert_alpha()
+                    building_images[f.name] = img
+                    building_names.append(f.name)
+                except Exception as e:
+                    print(f"Error loading {f.name}: {e}")
+    
+    if not building_names:
+        # Fallback
+        default_name = "default"
+        surf = pygame.Surface((100, 100))
+        surf.fill(RED)
+        building_images[default_name] = surf
+        building_names.append(default_name)
+        
+    current_idx = 0
 
     # Camera
     cam_x = 0
@@ -76,27 +91,36 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             
+            elif event.type == pygame.MOUSEWHEEL:
+                if event.y > 0:
+                    current_idx = (current_idx - 1) % len(building_names)
+                elif event.y < 0:
+                    current_idx = (current_idx + 1) % len(building_names)
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = pygame.mouse.get_pos()
                 world_x = mx + cam_x
                 world_y = my + cam_y
                 
                 if event.button == 1: # Left Click - Place
-                    # Center the building on click? Or top-left?
-                    # Game uses topleft in Building.__init__ (x_pos, y_pos)
-                    # Let's place top-left for consistency with game logic
-                    # Or center it for better UX?
-                    # If I center it, I need to adjust x,y before saving.
-                    # Let's place top-left to be simple and exact.
-                    buildings.append({"x": int(world_x), "y": int(world_y)})
+                    buildings.append({
+                        "x": int(world_x), 
+                        "y": int(world_y),
+                        "type": building_names[current_idx]
+                    })
                     
                 elif event.button == 3: # Right Click - Remove
                     # Find closest building
                     to_remove = None
                     min_dist = 10000
                     for b in buildings:
-                        bx = b["x"] + house_img.get_width() // 2
-                        by = b["y"] + house_img.get_height() // 2
+                        b_type = b.get("type", "house.png")
+                        img = building_images.get(b_type)
+                        if not img:
+                            img = list(building_images.values())[0]
+                            
+                        bx = b["x"] + img.get_width() // 2
+                        by = b["y"] + img.get_height() // 2
                         dist = ((bx - world_x)**2 + (by - world_y)**2)**0.5
                         if dist < 100 and dist < min_dist: # Threshold
                             min_dist = dist
@@ -133,12 +157,48 @@ def main():
 
         # Draw Buildings
         for b in buildings:
-            screen.blit(house_img, (b["x"] - cam_x, b["y"] - cam_y))
+            b_type = b.get("type", "house.png")
+            img = building_images.get(b_type)
+            if not img:
+                # Fallback to first available or house.png
+                img = building_images.get("house.png", list(building_images.values())[0])
+            screen.blit(img, (b["x"] - cam_x, b["y"] - cam_y))
 
         # Draw HUD
         font = pygame.font.SysFont("arial", 20)
         txt = font.render(f"Buildings: {len(buildings)} | Pos: {cam_x},{cam_y}", True, WHITE)
         screen.blit(txt, (10, 10))
+        
+        # Draw Preview (Top Right)
+        curr_name = building_names[current_idx]
+        curr_img = building_images[curr_name]
+        
+        # Draw a background for preview
+        prev_rect = curr_img.get_rect()
+        # Scale down if too big
+        preview_scale = 1.0
+        if prev_rect.width > 150 or prev_rect.height > 150:
+            preview_scale = 150 / max(prev_rect.width, prev_rect.height)
+            
+        if preview_scale != 1.0:
+            preview_surf = pygame.transform.scale(curr_img, (int(prev_rect.width * preview_scale), int(prev_rect.height * preview_scale)))
+        else:
+            preview_surf = curr_img
+            
+        prev_rect = preview_surf.get_rect()
+        prev_rect.topright = (SCREEN_WIDTH - 10, 10)
+        
+        # Background box
+        bg_rect = prev_rect.inflate(10, 30)
+        bg_rect.topright = (SCREEN_WIDTH - 5, 5)
+        pygame.draw.rect(screen, (50, 50, 50), bg_rect)
+        pygame.draw.rect(screen, WHITE, bg_rect, 2)
+        
+        screen.blit(preview_surf, prev_rect)
+        
+        # Draw name
+        name_surf = font.render(curr_name, True, WHITE)
+        screen.blit(name_surf, (bg_rect.centerx - name_surf.get_width()//2, prev_rect.bottom + 5))
 
         pygame.display.flip()
 

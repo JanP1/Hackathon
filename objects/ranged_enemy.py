@@ -90,9 +90,9 @@ class RangedEnemy(Enemy):
             dx,  # direction x
             dy,  # direction y
             self.damage,
-            speed=self.projectile_speed,
-            map_width=4096,   # Pass map width
-            map_height=4096   # Pass map height
+            self.projectile_speed,
+            4096,   # Pass map width
+            4096   # Pass map height
         )
         projectile.camera = self.camera
         self.projectiles.append(projectile)

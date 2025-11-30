@@ -5,6 +5,7 @@ import sys
 from scenes.start import Start
 from scenes.base_level import BaseLevel
 from scenes.level_1 import Level_1
+from scenes.level_2 import Level_2
 
 
 WIDTH = 1920
@@ -26,12 +27,14 @@ class Game:
         self.start_scene = Start(self.screen, self.game_state_manager, self.clock)
         self.level_test_scene = BaseLevel(self.screen, self.game_state_manager, self.clock)
         self.level_1 = Level_1(self.screen, self.game_state_manager, self.clock)
+        self.level_2 = Level_2(self.screen, self.game_state_manager, self.clock)
 
         # uzupełniane nazwami poziomu i wartoscia np self.states = {"level1":self.level1}
         self.states = {
             "start": self.start_scene,
             "level_test": self.level_test_scene,
-            "level_1": self.level_1
+            "level_1": self.level_1,
+            "level_2": self.level_2,
         }
 
         # =============================================================
@@ -44,7 +47,7 @@ class Game:
                     pygame.quit()
                     sys.exit()
 
-            self.game_state_manager.set_state("level_1")
+            self.game_state_manager.set_state("level_2")
 
             self.states[self.game_state_manager.get_state()].run()
 

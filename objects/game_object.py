@@ -20,13 +20,15 @@ class GameObject(ABC):
         Scalona wersja:
         - obsługuje skalę sprite’a (scale),
         - zachowuje poprzednie API (name na końcu),
-        - jeśli ktoś przez przypadek podał name jako 5. argument (stare wywołania),
-          próbujemy to wykryć i potraktować jako name, a scale ustawiamy na 1.0.
+        - posiada referencję do kamery (self.camera),
+        - draw() umie rysować z przesunięciem kamery.
+
+        Hack kompatybilności:
+        Jeżeli wywołanie było GameObject(x, y, W, H, "player"),
+        to 'scale' będzie stringiem -> potraktuj to jako name, scale = 1.0.
         """
 
-        # Mały hack kompatybilności:
-        # Jeżeli wywołanie było GameObject(x, y, W, H, "player"),
-        # to 'scale' będzie stringiem -> potraktuj to jako name.
+        # Kompatybilność ze starymi wywołaniami
         if isinstance(scale, str) and name == "object":
             name = scale
             scale = 1.0
@@ -37,8 +39,12 @@ class GameObject(ABC):
         self.scale = float(scale)
         self.name = name
 
+        # --- KAMERA ---
+        # Może być np. instancją klasy Camera z metodą apply(rect)
+        # lub mieć pola x, y. Domyślnie brak kamery.
+        self.camera = None
+
         # Wczytanie domyślnego sprite'a
-        # (convert_alpha dla lepszej wydajności przy przezroczystości)
         self.sprite = pygame.image.load("assets/pictures/default_sprite.png").convert_alpha()
 
         # Zastosuj skalowanie do sprite’a
@@ -53,7 +59,6 @@ class GameObject(ABC):
         self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
 
         # Rect bazuje na aktualnym sprite
-        # (!!! nadal trzeba zdecydować globalnie, czy hitbox == sprite)
         self.rect = self.sprite.get_rect()
 
         # Ustaw pozycję (topleft)
@@ -68,6 +73,19 @@ class GameObject(ABC):
 
         self.facing_right = True
         self.is_active = False
+
+    # ======================================================================
+    # KAMERA
+    # ======================================================================
+
+    def set_camera(self, camera) -> None:
+        """
+        Podpina kamerę do obiektu.
+        'camera' powinna mieć:
+        - metodę apply(rect) -> rect przesunięty,
+        - lub pola x, y (top-left kamery w world coords).
+        """
+        self.camera = camera
 
     # ======================================================================
     # Inicjalizacja zasobów
@@ -115,12 +133,32 @@ class GameObject(ABC):
             self.rect.center = old_center
 
     # ======================================================================
-    # Rysowanie
+    # Rysowanie (z kamerą)
     # ======================================================================
 
     def draw(self, screen: pygame.Surface) -> None:
         current_sprite = self.sprite if self.facing_right else self.sprite_flipped
-        screen.blit(current_sprite, self.rect)
+
+        # Domyślnie rysujemy w self.rect
+        draw_rect = self.rect
+
+        # Jeśli jest kamera, spróbuj użyć apply(rect),
+        # a jeśli jej nie ma, użyj x/y kamery.
+        if self.camera is not None:
+            if hasattr(self.camera, "apply"):
+                try:
+                    draw_rect = self.camera.apply(self.rect)
+                except Exception:
+                    # fallback na x/y
+                    cam_x = getattr(self.camera, "x", 0)
+                    cam_y = getattr(self.camera, "y", 0)
+                    draw_rect = self.rect.move(-cam_x, -cam_y)
+            else:
+                cam_x = getattr(self.camera, "x", 0)
+                cam_y = getattr(self.camera, "y", 0)
+                draw_rect = self.rect.move(-cam_x, -cam_y)
+
+        screen.blit(current_sprite, draw_rect)
 
     # ======================================================================
     # Update – abstrakcyjny

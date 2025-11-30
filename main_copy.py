@@ -26,6 +26,8 @@ class Game:
         self.clock = pygame.time.Clock()
         self.game_state_manager = GameStateManager("start") # <- tutaj podać początkowy poziom
 
+        pygame.mouse.set_visible(False)
+
         # =============================================================
         # Tutaj definiowane poziomy np -> self.level1 = Level1(self.screen, self.game_state_manager)
 

@@ -22,14 +22,20 @@ class Game:
 
         # =============================================================
         # Ekrany / stany
-        self.start = Start(self.screen, self.game_state_manager)
-        self.level1 = Level1State(self.screen, self.clock, self.game_state_manager)
+        self.states = {}
+        self.game_state_manager = GameStateManager("start")
 
-        self.states = {
-            "start": self.start,
-            "level1": self.level1,
-        }
+        # create first state
+        self.states["start"] = self.create_state("start")
         # =============================================================
+
+    def create_state(self, name):
+        if name == "start":
+            return Start(self.screen, self.game_state_manager)
+        if name == "level1":
+            return Level1State(self.screen, self.clock, self.game_state_manager)
+        if name == "end":
+            return End(self.screen, self.game_state_manager)
 
     def run(self):
         while True:
@@ -57,8 +63,48 @@ class GameStateManager:
 
     def set_state(self, current_state):
         print(f"[STATE] -> {current_state}")
-        self.current_state = current_state
 
+        # delete previous instance
+        if current_state in game.states:
+            del game.states[current_state]
+
+        game.states[current_state] = game.create_state(current_state)
+        self.current_state = current_state
+    # def set_state(self, current_state):
+    #     print(f"[STATE] -> {current_state}")
+    #     self.current_state = current_state
+
+class End:
+    """
+        Koncowy ekran
+
+    """
+
+    def __init__(self, display, game_state_manager) -> None:
+        self.display = display
+        self.game_state_manager = game_state_manager
+
+        self.font = pygame.font.SysFont("consolas", 40)
+        self._enter_was_pressed = False
+
+    def run(self, events, dt):
+        self.display.fill("red")
+
+        text_surface = self.font.render(
+            "Naciśnij ENTER, aby powrócić", True, (255, 255, 255)
+        )
+        text_rect = text_surface.get_rect(
+            center=(self.display.get_width() // 2, self.display.get_height() // 2)
+        )
+        self.display.blit(text_surface, text_rect)
+
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_RETURN]:
+            if not self._enter_was_pressed:
+                self._enter_was_pressed = True
+                self.game_state_manager.set_state("start")
+        else:
+            self._enter_was_pressed = False
 
 class Start:
     """
@@ -124,6 +170,16 @@ class Level1State:
 
         # Jedna klatka levelu
         self.level_game.run_frame(dt, events)
+
+        # jezeli zginie - ekran koncowy
+        if self.level_game and not self.level_game.player.is_alive:
+            self.game_state_manager.set_state("end")
+            try:
+                self.level_game.stop_audio()
+            except AttributeError:
+                pass
+            self.level_game = None
+
 
         # Jeżeli level chce wyjść (ESC), wracamy do "start"
         if getattr(self.level_game, "want_quit", False):

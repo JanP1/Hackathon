@@ -19,7 +19,7 @@ class MeleeEnemy(Enemy):
         self.frame_duration = 0.05 # seconds per frame
         
         # Load walk animation
-        base_path = Path("assets/pictures/walk_animation")
+        base_path = Path("assets/pictures/kaktus_animation")
         if base_path.exists():
             # Sort files to ensure correct order
             files = sorted([f for f in base_path.iterdir() if f.suffix.lower() == '.png'])

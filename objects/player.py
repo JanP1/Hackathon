@@ -297,10 +297,10 @@ class Player(GameObject):
             pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
 
         # UI: pasek życia w dolnej części ekranu
-        self._draw_attack_cooldown_bar(screen)
+        self._draw_health_bar(screen)
 
-    def _draw_attack_cooldown_bar(self, screen):
-        """Rysuje pasek życia gracza (zamiast paska cooldownu)."""
+    def _draw_health_bar(self, screen):
+        """Rysuje pasek życia gracza."""
         # Wymiary i pozycja paska (centrowany przy dolnej krawędzi)
         bar_width = self.SCREEN_W / 3
         bar_height = 30

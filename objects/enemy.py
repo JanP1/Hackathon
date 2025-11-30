@@ -125,24 +125,39 @@ class Enemy(GameObject):
     
     def draw_health_bar(self, screen):
         cam_x, cam_y = self.get_camera_offset()
-        """Draw health bar above enemy."""
+        """Draw health bar above enemy with the same style as player's bar."""
+        # Dimensions and position (centered above enemy head)
         bar_width = 50
-        bar_height = 5
-        bar_x = self.rect.centerx - bar_width // 2 - cam_x
-        bar_y = self.rect.top - 10 - cam_y
-        
-        # Background (red)
-        pygame.draw.rect(screen, (255, 0, 0), 
-                        (bar_x, bar_y, bar_width, bar_height))
-        
-        # Foreground (green)
-        health_width = int(bar_width * self.get_health_percentage())
-        pygame.draw.rect(screen, (0, 255, 0), 
-                        (bar_x, bar_y, health_width, bar_height))
-        
-        # Border
-        pygame.draw.rect(screen, (255, 255, 255), 
-                        (bar_x, bar_y, bar_width, bar_height), 1)
+        bar_height = 12
+        bar_x = int(self.rect.centerx - bar_width // 2 - cam_x)
+        bar_y = int(self.rect.top - 12 - cam_y)
+
+        # Percentage progress
+        progress = max(0.0, min(1.0, self.get_health_percentage())) if self.max_health > 0 else 0.0
+
+        # Fill color: green if >=50%, else red (match player's logic)
+        fill_color = (0, 150, 0) if progress >= 0.5 else (200, 40, 40)
+
+        # Fill
+        fill_width = int(bar_width * progress)
+        if fill_width > 0:
+            base_radius = int(bar_height / 2)
+            radius = max(0, min(base_radius, fill_width // 2))
+            pygame.draw.rect(
+                screen,
+                fill_color,
+                pygame.Rect(bar_x, bar_y, fill_width, bar_height),
+                border_radius=radius,
+            )
+
+        # Border (rounded, black)
+        pygame.draw.rect(
+            screen,
+            (0, 0, 0),
+            pygame.Rect(bar_x, bar_y, int(bar_width), bar_height),
+            width=2,
+            border_radius=int(bar_height / 2),
+        )
     
     
     @abstractmethod

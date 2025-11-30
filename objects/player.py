@@ -405,7 +405,7 @@ class Player(GameObject):
         """Rysuje pasek życia gracza."""
         # Wymiary i pozycja paska (centrowany przy dolnej krawędzi)
         bar_width = self.SCREEN_W / 3
-        bar_height = 30
+        bar_height = 35
         bar_y_offset = self.SCREEN_H / 14
         x = int(self.SCREEN_W / 2 - bar_width / 2)
         y = int(self.SCREEN_H - bar_y_offset)
@@ -419,7 +419,7 @@ class Player(GameObject):
             progress = 0.0
 
         # Kolor paska: zielony >= 50%, czerwony < 50%
-        fill_color = (0, 200, 0) if progress >= 0.5 else (200, 40, 40)
+        fill_color = (0, 150, 0) if progress >= 0.5 else (200, 40, 40)
         print(progress)
 
         # Wypełnienie paska
@@ -440,7 +440,7 @@ class Player(GameObject):
             screen,
             (0, 0, 0),
             pygame.Rect(x, y, int(bar_width), bar_height),
-            width=2,
+            width=4,
             border_radius=int(bar_height / 2),
         )
 

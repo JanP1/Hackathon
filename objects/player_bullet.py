@@ -69,15 +69,21 @@ class PlayerBullet:
         if self.age > self.max_lifetime:
             self.alive = False
 
-    def draw(self, surface: pygame.Surface) -> None:
+    def draw(self, surface: pygame.Surface, camera=None) -> None:
         # samą kulkę tylko jeśli jeszcze "żyje"
         if not self.alive:
             return
 
+        # Przesunięcie kamery
+        cam_x, cam_y = 0, 0
+        if camera is not None:
+            cam_x, cam_y = camera.x, camera.y
+
+        # Rysujemy pocisk we współrzędnych ekranu
         pygame.draw.circle(
             surface,
             self.color,
-            (int(self.x), int(self.y)),
+            (int(self.x - cam_x), int(self.y - cam_y)),
             self.radius,
         )
 

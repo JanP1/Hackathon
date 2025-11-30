@@ -320,7 +320,7 @@ class Game(BaseLevel):
 
         # pociski (w tym ich dym)
         for bullet in self.player_bullets:
-            bullet.draw(self.screen)
+            bullet.draw(self.screen, self.camera)
 
         # wrogowie (część może być w fazie kurczenia – rect już zmniejszony)
         for enemy in self.enemies:

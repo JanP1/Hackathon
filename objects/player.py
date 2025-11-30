@@ -4,6 +4,9 @@ from objects.game_object import GameObject
 
 
 class Player(GameObject):
+    # statyczny font do napisu PERFECT!
+    _perfect_font: pygame.font.Font | None = None
+
     def __init__(
         self,
         x_pos: int,
@@ -15,35 +18,29 @@ class Player(GameObject):
     ):
         """
         Player:
-        - pełny system HP + pasek życia,
-        - dash (LShift) z rotacją i skalowaniem sprite’a,
-        - sound waves (LPM) z on-beat bonusami (WIĘKSZY ZASIĘG FALI),
-        - look-indicator (białe kółko w kierunku myszy),
-        - integracja z BPM przez wstrzykiwaną funkcję is_on_beat(),
-        - przygotowana pod bullet-time (time_scale),
-        - integracja z EffectsManager (add_wave przy spawn fali),
-        - animacja chodzenia z sekwencji PNG (jedna lista klatek, flip w draw),
-        - ruch w koordynatach MAPY (map_width/map_height) + kamera (camera.x/y).
+        - HP + pasek życia,
+        - dash (LShift),
+        - sound waves (LPM) z on-beat bonusami (większy zasięg),
+        - prosty napis PERFECT! przy trafieniu w beat,
+        - look-indicator,
+        - integracja z BPM i EffectsManager,
+        - ruch po mapie + kamera.
         """
         super().__init__(x_pos, y_pos, screen_w, screen_h, scale, name)
 
         self.is_alive = True
-
-        # ==============================================================#
-        # podstawowe stany
-        # ==============================================================#
         self.facing_right: bool = True
 
-        # ==============================================================#
+        # ==================================================================
         # Mapa i kamera
-        # ==============================================================#
+        # ==================================================================
         self.map_width = screen_w
         self.map_height = screen_h
         self.camera = None  # type: ignore
 
-        # ==============================================================#
-        # Walk animation – JEDNA lista klatek, flip w draw
-        # ==============================================================#
+        # ==================================================================
+        # Animacja chodzenia
+        # ==================================================================
         self.anim_frames: list[pygame.Surface] = []
 
         for i in range(25):
@@ -70,9 +67,9 @@ class Player(GameObject):
             self.rect = self.sprite.get_rect()
             self.rect.center = old_center
 
-        # ==============================================================#
+        # ==================================================================
         # Attack animation
-        # ==============================================================#
+        # ==================================================================
         self.attack_anim_frames: list[pygame.Surface] = []
         try:
             for i in range(13):
@@ -82,7 +79,8 @@ class Player(GameObject):
                 if self.scale != 1.0:
                     fw, fh = frame.get_width(), frame.get_height()
                     frame = pygame.transform.scale(
-                        frame, (max(1, int(fw * self.scale)), max(1, int(fh * self.scale)))
+                        frame,
+                        (max(1, int(fw * self.scale)), max(1, int(fh * self.scale))),
                     )
                 self.attack_anim_frames.append(frame)
         except pygame.error as e:
@@ -104,16 +102,16 @@ class Player(GameObject):
         # --- Bullet-time scale ---
         self.time_scale: float = 1.0
 
-        # --- Sound waves (atak) ---
+        # --- Sound waves ---
         self.sound_waves: list[dict] = []
         self.wave_speed = 7
-        self.max_wave_radius = 180           # normalny zasięg
+        self.max_wave_radius = 180
         self.wave_color = (0, 255, 255)
         self.on_beat_wave_color = (255, 0, 0)
         self.wave_thickness = 5
 
-        # WIĘKSZY ZASIĘG NA BEACIE + GRUBSZA FALA
-        self.on_beat_max_wave_radius = 250   # większy range gdy klik na beacie
+        # większy zasięg / grubość na beacie
+        self.on_beat_max_wave_radius = 250
         self.on_beat_wave_thickness = 12
 
         self._mouse_was_pressed = False
@@ -124,7 +122,15 @@ class Player(GameObject):
         self.base_wave_damage = 10
         self.wave_damage_bonus = 0
 
+        # on-beat checker z BPMCounter
         self._on_beat_checker = None
+
+        # --- PERFECT! napis ---
+        self.perfect_text_timer_ms: int = 0
+        self._last_update_ticks: int = pygame.time.get_ticks()
+        if Player._perfect_font is None:
+            pygame.font.init()
+            Player._perfect_font = pygame.font.SysFont("consolas", 32, bold=True)
 
         # --- Dash parameters ---
         self.is_dashing = False
@@ -136,17 +142,14 @@ class Player(GameObject):
         self.dash_start_time_ms = 0
         self.dash_scale = 0.8
 
-        # look indicator
         self.look_max_distance = 250
-
-        # EffectsManager
         self.effects_manager = None
 
         self.rect.centerx = x_pos
         self.rect.centery = y_pos
 
     # ======================================================================
-    # API mapy i czasu
+    # API mapy, czasu, efektów
     # ======================================================================
 
     def set_time_scale(self, time_scale: float) -> None:
@@ -160,6 +163,14 @@ class Player(GameObject):
             self.map_width = int(map_width)
         if map_height > 0:
             self.map_height = int(map_height)
+
+    # ======================================================================
+    # BPM API
+    # ======================================================================
+
+    def set_on_beat_checker(self, checker_fn) -> None:
+        """Podpięcie funkcji BPMCounter.is_on_beat."""
+        self._on_beat_checker = checker_fn
 
     # ======================================================================
     # Input / movement
@@ -269,9 +280,6 @@ class Player(GameObject):
     # Waves / atak
     # ======================================================================
 
-    def set_on_beat_checker(self, checker_fn) -> None:
-        self._on_beat_checker = checker_fn
-
     def _handle_mouse_click(self) -> None:
         if not self.is_alive:
             self._mouse_was_pressed = False
@@ -282,6 +290,7 @@ class Player(GameObject):
             if not self._mouse_was_pressed:
                 now = pygame.time.get_ticks()
                 if now >= self._next_attack_time_ms:
+                    # sprawdzenie beatu
                     on_beat_now = False
                     if callable(self._on_beat_checker):
                         try:
@@ -289,10 +298,10 @@ class Player(GameObject):
                         except Exception:
                             on_beat_now = False
 
+                    # animacja ataku
                     self.is_attacking_anim = True
                     self.attack_anim_index = 0.0
 
-                    # TU SIĘ DZIEJE WIĘKSZY RANGE NA BEACIE
                     max_radius = (
                         self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
                     )
@@ -321,8 +330,11 @@ class Player(GameObject):
                             pass
 
                     if on_beat_now:
+                        # licznik beatu / bonus dmg
                         self.beat_counter += 1
                         self.wave_damage_bonus += 15
+                        # proste: zapal timer napisu PERFECT! na ~0.6 s
+                        self.perfect_text_timer_ms = 600
 
                     self.play_sound("guitar")
                     self._next_attack_time_ms = now + self.attack_cooldown_ms
@@ -333,7 +345,9 @@ class Player(GameObject):
     def _update_waves(self) -> None:
         for wave in self.sound_waves:
             wave["radius"] += self.wave_speed
-        self.sound_waves = [w for w in self.sound_waves if w["radius"] <= w["max_radius"]]
+        self.sound_waves = [
+            w for w in self.sound_waves if w["radius"] <= w["max_radius"]
+        ]
 
     def on_beat(self) -> None:
         if not self.is_alive:
@@ -357,6 +371,13 @@ class Player(GameObject):
         if not self.is_alive:
             return
 
+        # dt do liczenia timera PERFECT!
+        now_ticks = pygame.time.get_ticks()
+        delta_ms = now_ticks - self._last_update_ticks
+        if delta_ms < 0:
+            delta_ms = 0
+        self._last_update_ticks = now_ticks
+
         if not self.is_dashing and not self.is_attacking_anim:
             self._handle_input()
 
@@ -366,6 +387,10 @@ class Player(GameObject):
         self._handle_mouse_click()
         self._update_waves()
         self._update_attack_animation()
+
+        # zmniejszamy timer PERFECT!
+        if self.perfect_text_timer_ms > 0:
+            self.perfect_text_timer_ms = max(0, self.perfect_text_timer_ms - delta_ms)
 
     def draw(self, screen: pygame.Surface) -> None:
         cam_x, cam_y = 0, 0
@@ -402,6 +427,7 @@ class Player(GameObject):
                 (self.rect.x - cam_x, self.rect.y - cam_y),
             )
 
+        # Fale
         for wave in self.sound_waves:
             if wave["radius"] > 0:
                 wx, wy = wave["pos"]
@@ -413,6 +439,7 @@ class Player(GameObject):
                     wave.get("thickness", self.wave_thickness),
                 )
 
+        # Dot w stronę myszy
         mx, my = pygame.mouse.get_pos()
         cam_x, cam_y = 0, 0
         if self.camera is not None:
@@ -440,7 +467,21 @@ class Player(GameObject):
 
         pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
 
+        # Pasek życia
         self._draw_health_bar(screen)
+
+        # ===========================
+        # NAPIS PERFECT!
+        # ===========================
+        if self.perfect_text_timer_ms > 0 and Player._perfect_font is not None:
+            text_surf = Player._perfect_font.render("PERFECT!", True, (255, 255, 0))
+            tw, th = text_surf.get_size()
+
+            # okolice metronomu: metronom masz na (SCREEN_W-200, SCREEN_H-50)
+            x = int(self.SCREEN_W - 200 - tw / 2)
+            y = int(self.SCREEN_H - 120 - th / 2)
+
+            screen.blit(text_surf, (x, y))
 
     # ======================================================================
     # Health API

@@ -13,30 +13,13 @@ from objects.effects_manager import EffectsManager
 from objects.player import Player
 from objects.bpm_counter import BPMCounter
 from objects.ranged_enemy import RangedEnemy
-from objects.camera import Camera  # <-- kamera
+from objects.camera import Camera
+from objects.beat_hit_popup import BeatHitPopup   # <-- NOWY IMPORT
 
 
 class BaseLevel(ABC):
     """
     Bazowa klasa poziomu.
-
-    WSPÓLNE SYSTEMY DLA WIELU LEVELI:
-    - globalny time_scale (bullet time) sterowany scroll'em myszy,
-    - audio:
-        * Level1AudioManager (mp3 + bit.mid),
-        * powiązanie time_scale z prędkością odtwarzania,
-    - BPMCounter oparty o MIDI (midi_note_times z audio_managera),
-    - EffectsManager:
-        * przechowuje dane dla postprocessu (waves, bullets),
-    - Player:
-        * wstrzyknięty effects_manager (fale),
-        * wstrzyknięty time_scale,
-        * wstrzyknięty on_beat_checker z BPMCounter,
-    - lista wrogów + wspólna obsługa on_beat(),
-    - debug HUD (nazwa poziomu, FPS, time_scale, speed),
-    - KAMERA:
-        * domyślnie mapa = rozmiar ekranu,
-        * level może nadpisać rozmiar mapy przez set_map_size().
     """
 
     def __init__(
@@ -78,7 +61,7 @@ class BaseLevel(ABC):
         self.audio_manager: Optional[Level1AudioManager] = None
         if bit_mid_path is not None and mexican_mp3_path is not None:
             self.audio_manager = Level1AudioManager(
-                fps=60,  # nominalne FPS – i tak korzystasz z dt
+                fps=60,
                 bit_mid_path=bit_mid_path,
                 mexican_mp3_path=mexican_mp3_path,
                 enable_background_mp3=enable_background_mp3,
@@ -98,7 +81,7 @@ class BaseLevel(ABC):
         self.effects_manager = EffectsManager()
 
         # ------------------------------------------------------------------
-        # Player – wstrzykujemy effects_manager i time_scale
+        # Player
         # ------------------------------------------------------------------
         self.player = Player(
             self.WIDTH // 2,
@@ -114,17 +97,16 @@ class BaseLevel(ABC):
             self.player.set_time_scale(self.time_scale)
 
         # ------------------------------------------------------------------
-        # CAMERA – domyślnie mapa = rozmiar ekranu, level może to nadpisać
+        # CAMERA
         # ------------------------------------------------------------------
         self.camera: Optional[Camera] = Camera(
-            self.WIDTH,      # map_width (na start = ekran)
-            self.HEIGHT,     # map_height (na start = ekran)
-            self.WIDTH,      # screen_width
-            self.HEIGHT,     # screen_height
+            self.WIDTH,
+            self.HEIGHT,
+            self.WIDTH,
+            self.HEIGHT,
             box_w=int(self.WIDTH * 0.8),
             box_h=int(self.HEIGHT * 0.8),
         )
-        # podpinamy kamerę do playera, żeby mógł używać offsetu
         self.player.camera = self.camera  # type: ignore
 
         # ------------------------------------------------------------------
@@ -146,24 +128,35 @@ class BaseLevel(ABC):
 
         self.beat_triggered: bool = False
 
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        # WSTRZYKNIĘCIE ON-BEAT CHECKERA DO PLAYERA
-        # teraz Player._handle_mouse_click będzie wiedział,
-        # czy klik nastąpił w oknie beatu i wtedy odpali większy zasięg fali
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # Wstrzyknięcie on-beat checkera do playera
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if hasattr(self.player, "set_on_beat_checker") and self.bpm_counter is not None:
             try:
                 self.player.set_on_beat_checker(self.bpm_counter.is_on_beat)
             except Exception as e:
                 print(f"[BPM] Warning: could not inject on_beat_checker into player: {e}")
-        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # Wstrzyknięcie callbacka PERFECT! do playera
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        if hasattr(self.player, "set_perfect_hit_callback"):
+            try:
+                self.player.set_perfect_hit_callback(self.on_player_perfect_hit)
+            except Exception as e:
+                print(f"[BPM] Warning: could not inject perfect_hit_callback into player: {e}")
 
         # ------------------------------------------------------------------
         # Enemies
         # ------------------------------------------------------------------
         self.enemies: List[RangedEnemy] = []
 
-        # flaga dla zarządcy stanów / main loopa
+        # ------------------------------------------------------------------
+        # Pop-upy PERFECT! itd.
+        # ------------------------------------------------------------------
+        self.hit_popups: list[BeatHitPopup] = []
+
+        # flaga wyjścia
         self.want_quit: bool = False
 
     # ======================================================================
@@ -171,11 +164,6 @@ class BaseLevel(ABC):
     # ======================================================================
 
     def run_frame(self, dt: float, events: list[pygame.event.Event]) -> None:
-        """
-        Jedno wywołanie na klatkę:
-        - dt w sekundach,
-        - events z pygame.event.get().
-        """
         self.handle_events(events)
         self.update(dt)
         self.draw()
@@ -205,23 +193,15 @@ class BaseLevel(ABC):
             self.camera.map_width = map_width
             self.camera.map_height = map_height
 
-        # player ma tę samą mapę
         if hasattr(self.player, "set_map_size"):
             self.player.set_map_size(map_width, map_height)
 
-        # podpinamy kamerę do playera
         self.player.camera = self.camera  # type: ignore
 
-        # NOWE: podpinamy kamerę też do EffectsManagera
         if hasattr(self.effects_manager, "set_camera"):
             self.effects_manager.set_camera(self.camera)
 
     def get_camera(self) -> Optional[Camera]:
-        """
-        Zwraca obiekt kamery – level może użyć go np. do:
-        - rysowania tła z offsetem (-camera.x, -camera.y),
-        - rysowania obiektów w koordynatach świata z camera.apply(rect).
-        """
         return self.camera
 
     # ======================================================================
@@ -229,28 +209,21 @@ class BaseLevel(ABC):
     # ======================================================================
 
     def handle_events(self, events: list[pygame.event.Event]) -> None:
-        """
-        Obsługa wspólnych eventów (ESC, scroll) + hook dla poziomu.
-        """
         for event in events:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.on_escape_pressed()
-
             elif event.type == pygame.MOUSEWHEEL:
                 if event.y > 0:
                     self._change_time_scale(+self.time_scale_step)
                 elif event.y < 0:
                     self._change_time_scale(-self.time_scale_step)
 
-            # przekazujemy dalej do poziomu (np. strzał prawym przyciskiem)
             self.handle_event_level(event)
 
     def on_escape_pressed(self) -> None:
         self.want_quit = True
         self.stop_audio()
-        # jeżeli korzystasz z game_state_managera
         if self.game_state_manager is not None:
-            # np. self.game_state_manager.change_state("start")
             pass
 
     def _change_time_scale(self, delta: float) -> None:
@@ -268,55 +241,70 @@ class BaseLevel(ABC):
         self._apply_time_scale_to_objects()
 
     def _apply_time_scale_to_objects(self) -> None:
-        # Player
         if hasattr(self.player, "set_time_scale"):
             self.player.set_time_scale(self.time_scale)
 
-        # Enemies
         for enemy in self.enemies:
             if hasattr(enemy, "set_time_scale"):
                 enemy.set_time_scale(self.time_scale)
+
+    # ======================================================================
+    # PERFECT! callback z playera
+    # ======================================================================
+
+    def on_player_perfect_hit(self) -> None:
+        """
+        Wywoływane przez gracza, gdy klik LPM trafi idealnie w beat.
+        Tworzymy napis PERFECT! nad metronomem.
+        """
+        if self.bpm_counter is None:
+            return
+
+        # Bierzemy pivot metronomu i rysujemy trochę powyżej
+        pivot_x = self.bpm_counter.rect.x
+        pivot_y = self.bpm_counter.rect.y
+
+        # Lekko nad metronomem (możesz dostroić offset)
+        text_x = pivot_x
+        text_y = pivot_y - 260
+
+        popup = BeatHitPopup(
+            text="PERFECT!",
+            x=text_x,
+            y=text_y,
+            color=(255, 255, 0),
+            lifetime_sec=0.8,
+            rise_speed=40.0,
+        )
+        self.hit_popups.append(popup)
 
     # ======================================================================
     # UPDATE (wspólny + hooki poziomu)
     # ======================================================================
 
     def update(self, dt: float) -> None:
-        """
-        dt – sekundy od poprzedniej klatki.
-        """
         if dt < 0.0:
             dt = 0.0
 
-        scaled_dt = dt * self.time_scale  # bullet-time
+        scaled_dt = dt * self.time_scale
 
-        # EffectsManager – czyści stare dane, aktualizuje waves/bullets
         self.effects_manager.update()
-
-        # upewnij się, że obiekty mają aktualny time_scale
         self._apply_time_scale_to_objects()
 
-        # BPMCounter (oparty o MIDI) – delta w sekundach
         if self.bpm_counter is not None:
             self.bpm_counter.update(scaled_dt)
 
-        # Audio manager (MIDI + crossfade mp3)
         if self.audio_manager is not None:
             self.audio_manager.update(
                 lambda _note_time, _music_time: None,
                 scaled_dt,
             )
 
-        # Player – ruch, umiejętności itd.
         self.player.update()
 
-        # KAMERA – śledzi gracza po mapie
         if self.camera is not None:
             self.camera.update(self.player)
 
-        # Enemies:
-        # - update na milisekundach (jak w level7),
-        # - dla RangedEnemy ustawiamy target na gracza.
         delta_ms = dt * 1000.0
         for enemy in self.enemies:
             if getattr(enemy, "destroying", False):
@@ -326,7 +314,6 @@ class BaseLevel(ABC):
             if isinstance(enemy, RangedEnemy):
                 enemy.set_target()
 
-        # Beat logic (wspólny) – jeden trigger na beat
         if self.bpm_counter is not None and self.bpm_counter.is_on_beat():
             if not self.beat_triggered:
                 self.beat_triggered = True
@@ -335,13 +322,15 @@ class BaseLevel(ABC):
         else:
             self.beat_triggered = False
 
-        # Logika specyficzna dla poziomu (kulki, dymy, inne rzeczy)
+        # UPDATE popupów PERFECT!
+        if self.hit_popups:
+            for popup in self.hit_popups:
+                popup.update(scaled_dt)
+            self.hit_popups = [p for p in self.hit_popups if p.alive]
+
         self.update_level(scaled_dt, dt)
 
     def _on_beat_common(self) -> None:
-        """
-        Wspólny mechanizm: każdy wróg, który ma on_beat(), dostaje callback.
-        """
         for enemy in self.enemies:
             if getattr(enemy, "destroying", False):
                 continue
@@ -353,19 +342,15 @@ class BaseLevel(ABC):
     # ======================================================================
 
     def draw(self) -> None:
-        """
-        Rysowanie:
-        - draw_level() – odpowiedzialność poziomu (tło, player, enemies, efekty),
-        - BPMCounter,
-        - Debug HUD.
-        """
         self.draw_level()
 
-        # BPMCounter
         if self.bpm_counter is not None:
             self.bpm_counter.draw(self.screen)
 
-        # HUD debugowy
+        # Rysujemy popupy nad metronomem
+        for popup in self.hit_popups:
+            popup.draw(self.screen)
+
         fps = self.clock.get_fps() if self.clock is not None else 0.0
         self.debug_hud.draw(
             self.screen,
@@ -375,56 +360,32 @@ class BaseLevel(ABC):
         )
 
     # ======================================================================
-    # HOOKI DLA POZIOMÓW (do nadpisania)
+    # HOOKI DLA POZIOMÓW
     # ======================================================================
 
     @abstractmethod
     def update_level(self, scaled_dt: float, raw_dt: float) -> None:
-        """
-        Logika specyficzna dla danego levelu.
-        - scaled_dt – sekundy z uwzględnieniem time_scale,
-        - raw_dt    – sekundy bez time_scale.
-        """
         raise NotImplementedError
 
     @abstractmethod
     def draw_level(self) -> None:
-        """
-        Rysowanie specyficzne dla danego levelu:
-        tło, player, enemies, pociski, efekty itd.
-        (BPM i HUD dorysowywane są w BaseLevel.draw()).
-        """
         raise NotImplementedError
 
     def handle_event_level(self, event: pygame.event.Event) -> None:
-        """
-        Opcjonalny hook na eventy poziomu.
-        Domyślnie nic nie robi.
-        """
         pass
 
     def on_beat(self) -> None:
-        """
-        Opcjonalny hook wywoływany na beat (po wspólnym _on_beat_common()).
-        Domyślnie nic nie robi.
-        """
         pass
 
     # ======================================================================
-    # DODATKOWE POMOCNICZE METODY (np. wygodne dodawanie wroga)
+    # POMOCNICZE: dodawanie wroga
     # ======================================================================
 
     def add_enemy(self, enemy) -> None:
-        """
-        Pomocnicza metoda do dodawania wrogów tak, żeby mieli już
-        poprawnie ustawiony time_scale i effects_manager (jeśli obsługują).
-        """
         if hasattr(enemy, "set_time_scale"):
             enemy.set_time_scale(self.time_scale)
         if hasattr(enemy, "set_effects_manager"):
             enemy.set_effects_manager(self.effects_manager)
-        # NOWE: Przekazujemy referencję do kamery, żeby wróg (i jego pociski)
-        # wiedział, gdzie się rysować.
         if self.camera is not None:
             enemy.camera = self.camera
         self.enemies.append(enemy)

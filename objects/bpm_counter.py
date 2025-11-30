@@ -155,7 +155,7 @@ class BPMCounter(GameObject):
         self.bpm = 60.0 / interval
 
         # Pulse gdy jesteśmy blisko "startu" kolejnego beatu
-        center_tolerance = 0.25  # 1/4 interwału
+        center_tolerance = 0.08  # 1/4 interwału
         if self.beat_progress < center_tolerance:
             progress = self.beat_progress / center_tolerance
             self.pulse_scale = 1.0 + (self.max_pulse_scale - 1.0) * (1.0 - progress)
@@ -172,7 +172,7 @@ class BPMCounter(GameObject):
 
         self.beat_progress = (self.music_time_sec % beat_duration) / beat_duration
 
-        center_tolerance = 0.25
+        center_tolerance = 0.08
         if self.beat_progress < center_tolerance:
             progress = self.beat_progress / center_tolerance
             self.pulse_scale = 1.0 + (self.max_pulse_scale - 1.0) * (1.0 - progress)
@@ -268,7 +268,7 @@ class BPMCounter(GameObject):
     # API pomocnicze
     # ==============================
 
-    def is_on_beat(self, tolerance: float = 0.15) -> bool:
+    def is_on_beat(self, tolerance: float = 0.08) -> bool:
         """
         Czy jesteśmy blisko beatu:
         - w trybie MIDI i stałym – oparte o beat_progress 0..1.

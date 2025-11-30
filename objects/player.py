@@ -77,8 +77,10 @@ class Player(GameObject):
         self.on_beat_wave_color = (255, 0, 0)
         self.wave_thickness = 5
         # Parametry wizualne fali dla kliknięcia on-beat (dłuższa i grubsza)
-        self.on_beat_max_wave_radius = 400
+        self.on_beat_max_wave_radius = 500
         self.on_beat_wave_thickness = 12
+        self.on_beat_wave_speed = 22
+        self.on_beat_now = False
 
         # Click handling to avoid spawning too many waves at once
         self._mouse_was_pressed = False
@@ -272,16 +274,15 @@ class Player(GameObject):
                 now = pygame.time.get_ticks()
                 if now >= self._next_attack_time_ms:
                     # Sprawdź w chwili kliknięcia, czy jest beat
-                    on_beat_now = False
                     if callable(self._on_beat_checker):
                         try:
-                            on_beat_now = bool(self._on_beat_checker())
+                            self.on_beat_now = bool(self._on_beat_checker())
                         except Exception:
-                            on_beat_now = False
+                            self.on_beat_now = False
 
                     # Ustal parametry fali: jeśli on-beat, fala jest dłuższa i ma większe obramowanie
-                    max_radius = self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
-                    thickness = self.on_beat_wave_thickness if on_beat_now else self.wave_thickness
+                    max_radius = self.on_beat_max_wave_radius if self.on_beat_now else self.max_wave_radius
+                    thickness = self.on_beat_wave_thickness if self.on_beat_now else self.wave_thickness
                     color = self.wave_color  # bez zmiany koloru
                     # Spawn a new sound wave at player's center
                     self.sound_waves.append({
@@ -290,7 +291,7 @@ class Player(GameObject):
                         "max_radius": max_radius,
                         "color": color,
                         "thickness": thickness,
-                        "on_beat": on_beat_now,
+                        "on_beat": self.on_beat_now,
                         # Store damage so other systems can read it
                         "damage": self.base_wave_damage + self.wave_damage_bonus,
                     })
@@ -303,7 +304,7 @@ class Player(GameObject):
 
 
                     # Jeśli kliknięto dokładnie w beat, zwiększ licznik i bonus obrażeń od razu
-                    if on_beat_now:
+                    if self.on_beat_now:
                         self.beat_counter += 1
                         self.wave_damage_bonus += 15
                     # Optionally play a sound if one is set up with key 'guitar'
@@ -332,7 +333,10 @@ class Player(GameObject):
     def _update_waves(self):
         # Expand and cull finished waves
         for wave in self.sound_waves:
-            wave["radius"] += self.wave_speed
+            # Center follows the player's current center position
+            wave["pos"] = (self.rect.centerx, self.rect.centery)
+            # Expand radius over time
+            wave["radius"] += self.on_beat_wave_speed if self.on_beat_now else self.wave_speed
         self.sound_waves = [w for w in self.sound_waves if w["radius"] <= w["max_radius"]]
 
 

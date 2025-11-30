@@ -69,15 +69,15 @@ class Player(GameObject):
         # Sound wave visuals generated on mouse click ---------------
 
         self.sound_waves = []  # list of dicts: {pos: (x,y), radius: float, max_radius: int}
-        self.wave_speed = 7
-        self.max_wave_radius = 180
+        self.wave_speed = 13
+        self.max_wave_radius = 300
         self.wave_color = (0, 255, 255)
 
         # Kolor fali, gdy kliknięcie nastąpi "on beat" (wymóg: czerwona)
         self.on_beat_wave_color = (255, 0, 0)
         self.wave_thickness = 5
         # Parametry wizualne fali dla kliknięcia on-beat (dłuższa i grubsza)
-        self.on_beat_max_wave_radius = 250
+        self.on_beat_max_wave_radius = 400
         self.on_beat_wave_thickness = 12
 
         # Click handling to avoid spawning too many waves at once
@@ -290,6 +290,7 @@ class Player(GameObject):
                         "max_radius": max_radius,
                         "color": color,
                         "thickness": thickness,
+                        "on_beat": on_beat_now,
                         # Store damage so other systems can read it
                         "damage": self.base_wave_damage + self.wave_damage_bonus,
                     })

@@ -36,6 +36,14 @@ class GameObject(ABC):
         self.facing_right = True
 
         self.is_active = False
+        
+        # Camera reference (to be set by level)
+        self.camera = None
+
+
+    def get_camera_offset(self):
+        """Get camera offset for rendering."""
+        return self.camera.x, self.camera.y # type: ignore
 
 
     def init_sounds(self, sound_dict):
@@ -60,8 +68,10 @@ class GameObject(ABC):
 
 
     def draw(self, screen):
+        """Draw the object with camera offset applied."""
+        cam_x, cam_y = self.get_camera_offset()
         current_sprite = self.sprite if self.facing_right else self.sprite_flipped
-        screen.blit(current_sprite, self.rect)
+        screen.blit(current_sprite, (self.rect.x - cam_x, self.rect.y - cam_y))
 
 
     @abstractmethod

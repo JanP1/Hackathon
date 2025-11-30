@@ -124,11 +124,12 @@ class Enemy(GameObject):
     
     
     def draw_health_bar(self, screen):
+        cam_x, cam_y = self.get_camera_offset()
         """Draw health bar above enemy."""
         bar_width = 50
         bar_height = 5
-        bar_x = self.rect.centerx - bar_width // 2
-        bar_y = self.rect.top - 10
+        bar_x = self.rect.centerx - bar_width // 2 - cam_x
+        bar_y = self.rect.top - 10 - cam_y
         
         # Background (red)
         pygame.draw.rect(screen, (255, 0, 0), 

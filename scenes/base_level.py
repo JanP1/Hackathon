@@ -10,7 +10,6 @@ import pygame
 from objects.audio_manager import Level1AudioManager
 from objects.debugHUD import Level1DebugHUD
 from objects.effects_manager import EffectsManager
-from objects.camera import Camera
 from objects.player import Player
 from objects.bpm_counter import BPMCounter
 from objects.ranged_enemy import RangedEnemy
@@ -115,19 +114,6 @@ class BaseLevel(ABC):
         if hasattr(self.player, "set_time_scale"):
             self.player.set_time_scale(self.time_scale)
 
-        # ------------------------------------------------------------------
-        # Kamera – podąża za graczem
-        # ------------------------------------------------------------------
-        # Zakładamy, że mapa jest większa niż ekran, np. 4096x4096
-        self.camera = Camera(
-            map_width=4096,
-            map_height=4096,
-            screen_width=self.WIDTH,
-            screen_height=self.HEIGHT,
-        )
-        # Podpinamy kamerę do gracza
-        if hasattr(self.player, "set_camera"):
-            self.player.set_camera(self.camera)
 
         # ------------------------------------------------------------------
         # BPMCounter
@@ -257,9 +243,6 @@ class BaseLevel(ABC):
                 lambda _note_time, _music_time: None,
                 scaled_dt,
             )
-
-        # Kamera – aktualizuj pozycję na podstawie gracza
-        self.camera.update(self.player)
 
         # Player – ruch, umiejętności itd.
         self.player.update()

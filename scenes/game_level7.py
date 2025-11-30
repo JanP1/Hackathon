@@ -144,14 +144,10 @@ class Game(BaseLevel):
         # pozycja gracza
         px, py = self.player.rect.center
 
-        # kierunek = celowanie w pozycję myszy (uwzględniając kamerę)
+        # kierunek = celowanie w pozycję myszy
         mx, my = pygame.mouse.get_pos()
-        # Przeliczamy pozycję myszy na współrzędne świata
-        world_mx = mx + self.camera.x
-        world_my = my + self.camera.y
-
-        dx = world_mx - px
-        dy = world_my - py
+        dx = mx - px
+        dy = my - py
         length = math.hypot(dx, dy)
         if length == 0:
             return
@@ -336,8 +332,6 @@ level7_bg_color = (10, 40, 90)
 if __name__ == "__main__":
     pygame.init()
     pygame.display.set_caption("Level 7 - GL postprocess")
-    pygame.mouse.set_visible(False)
-
 
     # okno z kontekstem OpenGL
     screen = pygame.display.set_mode(
@@ -375,28 +369,14 @@ if __name__ == "__main__":
         # logika + rysowanie NA game_surface (CPU)
         game.run_frame(dt, events)
 
-        # Dane dla shadera bierzemy z EffectsManagera, ale musimy je
-        # przesunąć o pozycję kamery, żeby zgadzały się z tym, co widać na ekranie.
-        cam_x = game.camera.x
-        cam_y = game.camera.y
-
-        # Przesuwamy fale
-        waves_data = game.effects_manager.get_waves_data()
-        waves_data_screen = [
-            (cx - cam_x, cy - cam_y, start_time, thickness)
-            for cx, cy, start_time, thickness in waves_data
-        ]
-
-        # Przesuwamy pociski
+        # Dane dla shadera bierzemy teraz wyłącznie z EffectsManagera
         bullets_data = game.effects_manager.get_bullets_data()
-        bullets_data_screen = [
-            (x - cam_x, y - cam_y, vx, vy) for x, y, vx, vy in bullets_data
-        ]
+        waves_data = game.effects_manager.get_waves_data()
 
         # Przekazujemy też aktualny czas do shadera, aby mógł animować fale
         current_time_ms = pygame.time.get_ticks()
 
-        gl_post.render(game_surface, bullets_data_screen, waves_data_screen, current_time_ms)
+        gl_post.render(game_surface, bullets_data, waves_data, current_time_ms)
 
         pygame.display.flip()
 

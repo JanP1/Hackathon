@@ -1,5 +1,8 @@
 from abc import abstractmethod
 import random
+import os
+from pathlib import Path
+
 import pygame
 
 from objects.player import Player
@@ -7,9 +10,17 @@ from objects.ranged_enemy import RangedEnemy
 from objects.bpm_counter import BPMCounter
 from objects.camera import Camera
 
+
 # klasa bazowa poziomu, posiada BPM, podstawowy spawner przeciwników, update i draw
 class BaseLevel:
-    def __init__(self, screen, game_state_manager, clock, bpm: int = 80, path_to_background: str = "assets/pictures/backgrounds/main_background.png") -> None:
+    def __init__(
+        self,
+        screen,
+        game_state_manager,
+        clock,
+        bpm: int = 80,
+        path_to_background: str = "assets/pictures/backgrounds/main_background.png",
+    ) -> None:
         self.name = "Level_Test"
         self.clock = clock
         self.enemies = []
@@ -22,25 +33,38 @@ class BaseLevel:
 
         self.initBackground(path_to_background)
 
-        self.player = Player(self.WIDTH//2, self.HEIGHT//2, self.WIDTH, self.HEIGHT, 1, 4096, 4096)
+        self.player = Player(
+            self.WIDTH // 2,
+            self.HEIGHT // 2,
+            self.WIDTH,
+            self.HEIGHT,
+            1,
+            4096,
+            4096,
+        )
 
         self.spawn_timer = 0
         self.spawn_interval = 5000
 
-        self.camera = Camera(self.bg_width, self.bg_height, self.WIDTH, self.HEIGHT, box_w=800, box_h=600)
-        
+        self.camera = Camera(
+            self.bg_width,
+            self.bg_height,
+            self.WIDTH,
+            self.HEIGHT,
+            box_w=800,
+            box_h=600,
+        )
+
         # assign camera to player; ignore type-checker if Player.camera is annotated as None
-        self.player.camera = self.camera # type: ignore
-        
+        self.player.camera = self.camera  # type: ignore
+
         self.initBPM(bpm)
-    
 
     def initBackground(self, path_to_background):
         # load background
         self.bg = pygame.image.load(path_to_background)
         self.bg_width = self.bg.get_width()
         self.bg_height = self.bg.get_height()
-
 
     @abstractmethod
     def spawnEnemies(self):
@@ -60,30 +84,62 @@ class BaseLevel:
         else:  # Left
             x = -50
             y = random.randint(0, self.HEIGHT)
-        
+
         enemy = RangedEnemy(x, y, self.WIDTH, self.HEIGHT, 0.25, self.player)
-        enemy.camera = self.camera # type: ignore
-        enemy.map_height = self.bg_width #type: ignore
-        enemy.map_width = self.bg_height #type: ignore
+        enemy.camera = self.camera  # type: ignore
+        enemy.map_height = self.bg_width  # type: ignore
+        enemy.map_width = self.bg_height  # type: ignore
 
         self.enemies.append(enemy)
 
-
     def initBPM(self, bpm: int = 80):
+        """
+        Inicjalizacja licznika BPM + podpięcie MIDI i mexican.mp3.
+        """
         self.bpm = bpm
-        self.bpm_counter = BPMCounter(self.WIDTH - 200, self.HEIGHT - 50, self.WIDTH, self.HEIGHT, bpm = self.bpm)
+
+        # domyślne ścieżki względne od cwd
+        default_midi_path = "assets/sounds/bit.mid"
+        default_mp3_path = "assets/sounds/mexican.mp3"
+
+        midi_path: str | None
+        mp3_path: str | None
+
+        # bit.mid
+        if os.path.isfile(default_midi_path):
+            midi_path = default_midi_path
+        else:
+            base_dir = Path(__file__).resolve().parent.parent
+            candidate = base_dir / "assets" / "sounds" / "bit.mid"
+            midi_path = str(candidate) if candidate.is_file() else None
+
+        # mexican.mp3
+        if os.path.isfile(default_mp3_path):
+            mp3_path = default_mp3_path
+        else:
+            base_dir = Path(__file__).resolve().parent.parent
+            candidate = base_dir / "assets" / "sounds" / "mexican.mp3"
+            mp3_path = str(candidate) if candidate.is_file() else None
+
+        self.bpm_counter = BPMCounter(
+            self.WIDTH - 200,
+            self.HEIGHT - 50,
+            self.WIDTH,
+            self.HEIGHT,
+            bpm=self.bpm,
+            midi_path=midi_path,
+            mexican_mp3_path=mp3_path,
+        )
+
         self.last_beat_time = 0
         self.beat_triggered = False
-
 
     @abstractmethod
     def level_specific_functions(self):
         """
         Placeholder for level-specific functionality.
-        Override this method in child classes to add custom leve❯ git push origin player-enemies-scrolling-map-feature
-fatal: cannot exec '/usr/bin/ksshaskpass': No such file or directory
-Username for 'https://github.com': l mechanics.
-        
+        Override this method in child classes to add custom level mechanics.
+
         Examples:
         - Special enemy spawn patterns
         - Level-specific obstacles
@@ -93,21 +149,20 @@ Username for 'https://github.com': l mechanics.
         """
         pass
 
-
-    def update(self):    
+    def update(self):
         delta_time = self.clock.get_time()
-        
+
         self.bpm_counter.update(delta_time)
         self.level_specific_functions()
         self.player.update()
         self.camera.update(self.player)
-        
+
         # Update spawn timer
         self.spawn_timer += delta_time
         if self.spawn_timer >= self.spawn_interval:
             self.spawnEnemies()
             self.spawn_timer = 0
-        
+
         # Update all enemies
         for enemy in self.enemies[:]:
             if enemy.is_active and enemy.is_alive:
@@ -116,6 +171,7 @@ Username for 'https://github.com': l mechanics.
             elif not enemy.is_alive:
                 self.enemies.remove(enemy)
 
+        # Beat z BPMCounter (który może być zsynchronizowany z MIDI)
         if self.bpm_counter.is_on_beat():
             if not self.beat_triggered:
                 self.beat_triggered = True
@@ -128,11 +184,10 @@ Username for 'https://github.com': l mechanics.
         else:
             self.beat_triggered = False
 
-
     def draw(self):
         # draw background
         self.screen.blit(self.bg, (-self.camera.x, -self.camera.y))
-        
+
         self.player.draw(self.screen)
 
         # draw hitbox for player
@@ -140,7 +195,7 @@ Username for 'https://github.com': l mechanics.
             self.screen,
             (255, 0, 0),
             self.camera.apply(self.player.rect),  # apply camera offset
-            2
+            2,
         )
 
         for enemy in self.enemies:
@@ -148,7 +203,6 @@ Username for 'https://github.com': l mechanics.
                 enemy.draw(self.screen)
 
         self.bpm_counter.draw(self.screen)
-
 
     def run(self):
         self.update()

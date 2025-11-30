@@ -51,15 +51,20 @@ class Level1AudioManager:
         bit_mid_path: Path,
         mexican_mp3_path: Path,
         enable_background_mp3: bool = True,
+        start_delay_sec: float = 0.0,
     ) -> None:
         self.fps = fps
         self.bit_mid_path = bit_mid_path
         self.mexican_mp3_path = mexican_mp3_path
         self.enable_background_mp3 = enable_background_mp3
+        self.start_delay_sec = float(start_delay_sec)
+        self.delay_timer: float = 0.0
+        self.started: bool = False
 
         print(f"[INIT] CWD = {Path.cwd()}")
         print(f"[INIT] bit_mid_path = {self.bit_mid_path} (exists={self.bit_mid_path.exists()})")
         print(f"[INIT] mexican_mp3_path = {self.mexican_mp3_path} (exists={self.mexican_mp3_path.exists()})")
+        print(f"[INIT] start_delay_sec = {self.start_delay_sec}")
 
         # --- MIDI / beat ---
         self.midi_note_times: list[float] = load_midi_note_times(self.bit_mid_path)
@@ -92,11 +97,25 @@ class Level1AudioManager:
         if not pygame.mixer.get_init():
             pygame.mixer.init()
 
-        self._init_vlc_player()
+        if self.start_delay_sec <= 0:
+            self._init_vlc_player()
+            self.started = True
+        else:
+            # Init VLC instance but don't play yet
+            self._init_vlc_instance_only()
 
     # =========================================================
     # VLC: tworzenie playerów i kontrola prędkości
     # =========================================================
+
+    def _init_vlc_instance_only(self) -> None:
+        if not self.enable_background_mp3:
+            return
+        try:
+            self.vlc_instance = vlc.Instance()
+        except Exception as e:
+            print(f"[VLC][WARN] Nie udało się zainicjalizować VLC instance: {e}")
+            self.vlc_instance = None
 
     def _create_player(
         self,
@@ -347,6 +366,23 @@ class Level1AudioManager:
         - wyzwala on_beat(...) dla nut, które „minęliśmy” w tej klatce,
         - aktualizuje crossfade audio (jeśli trwa).
         """
+        # Obsługa opóźnionego startu
+        if not self.started:
+            # Używamy scaled_dt czy raw dt? Zazwyczaj delay jest w czasie rzeczywistym.
+            # Ale scaled_dt jest przekazywane z zewnątrz.
+            # Załóżmy, że delay liczymy w czasie gry (scaled) lub rzeczywistym.
+            # Skoro to "muzyka startuje po 3s", to pewnie chodzi o czas rzeczywisty (niezależny od slow-mo).
+            # Ale tutaj dostajemy scaled_dt.
+            # Przyjmijmy, że delay liczymy w scaled_dt dla uproszczenia, albo musielibyśmy dostawać raw_dt.
+            # W BaseLevel.update przekazywane jest scaled_dt.
+            # Jeśli gra startuje z time_scale=1.0, to to samo.
+            self.delay_timer += scaled_dt
+            if self.delay_timer >= self.start_delay_sec:
+                self.started = True
+                self._init_vlc_player()
+            else:
+                return
+
         # --- BEAT Z MIDI ---
         if self.midi_note_times:
             if scaled_dt < 0.0:

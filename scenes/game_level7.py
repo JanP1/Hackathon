@@ -3,6 +3,7 @@
 import sys
 import math
 import random
+import json
 from pathlib import Path
 
 import pygame
@@ -37,6 +38,7 @@ from objects.debugHUD import Level1DebugHUD          # jw.
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
 FPS = 60
+MUSIC_START_DELAY_SEC = 3.0
 
 SOUNDS_DIR = BASE_DIR / "assets" / "sounds"
 BIT_MID_PATH = SOUNDS_DIR / "bit.mid"
@@ -44,6 +46,9 @@ MEXICAN_MP3_PATH = SOUNDS_DIR / "mexicanBit.mp3"
 
 PICTURES_DIR = BASE_DIR / "assets" / "pictures"
 MAIN_BG_PATH = PICTURES_DIR / "main_background.png"
+
+LEVELS_DIR = BASE_DIR / "assets" / "levels"
+BUILDINGS_JSON_PATH = LEVELS_DIR / "level7_buildings.json"
 
 
 class Game(BaseLevel):
@@ -84,22 +89,26 @@ class Game(BaseLevel):
             bit_mid_path=BIT_MID_PATH,
             mexican_mp3_path=MEXICAN_MP3_PATH,
             enable_background_mp3=True,
+            music_start_delay=MUSIC_START_DELAY_SEC,
         )
 
         # ------------------------
         # TŁO – obraz zamiast jednolitego koloru
         # ------------------------
         # UWAGA: Zakładamy, że obraz tła ma rozmiar mapy, np. 4096x4096
-        map_width, map_height = 4096, 4096
+        self.map_width, self.map_height = 4096, 4096
 
         self.background_image: pygame.Surface | None = None
         try:
             img = pygame.image.load(str(MAIN_BG_PATH)).convert()
             self.background_image = pygame.transform.scale(
-                img, (map_width, map_height)
+                img, (self.map_width, self.map_height)
             )
             # Ustawiamy rozmiar mapy w BaseLevel, żeby kamera wiedziała, jak się poruszać
-            self.set_map_size(map_width, map_height)
+            self.set_map_size(self.map_width, self.map_height)
+            
+            # Gracz na środku mapy
+            self.player.rect.center = (self.map_width // 2, self.map_height // 2)
 
             print(f"[BG] Załadowano tło: {MAIN_BG_PATH}")
         except Exception as e:
@@ -109,6 +118,18 @@ class Game(BaseLevel):
         # ------------------------
         # SPECYFICZNE DLA LEVEL7
         # ------------------------
+        
+        # Dźwięk time_stop
+        self.sound_time_stop = None
+        try:
+            self.sound_time_stop = pygame.mixer.Sound("assets/sounds/time_stop.mp3")
+            self.sound_time_stop.set_volume(0.6)
+        except Exception as e:
+            print(f"[WARN] Game sound time_stop.mp3 error: {e}")
+        
+        # Timer do spawnowania wrogów
+        self.enemy_spawn_timer = 0.0
+        self.enemy_spawn_interval = 2.5 # Średnio co 2.5s (losowo 2-3s)
 
                 # jeden RangedEnemy na start – od razu z targetem = player
         ranged = RangedEnemy(
@@ -119,8 +140,8 @@ class Game(BaseLevel):
             1.0,            # scale
             self.player,    # target
         )
-        ranged.map_width = map_width
-        ranged.map_height = map_height
+        ranged.map_width = self.map_width
+        ranged.map_height = self.map_height
         ranged.set_attack_cooldown(4)  # co 4 beaty
         self.add_enemy(ranged)         # ustawia mu time_scale + effects_manager
 
@@ -128,11 +149,29 @@ class Game(BaseLevel):
         # BUDYNKI
         # ------------------------
         self.buildings: list[Building] = []
-        # Przykładowy budynek
-        b = Building(800, 600, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0)
-        if self.camera:
-            b.camera = self.camera
-        self.buildings.append(b)
+        
+        if BUILDINGS_JSON_PATH.exists():
+            try:
+                with open(BUILDINGS_JSON_PATH, "r") as f:
+                    data = json.load(f)
+                    for b_data in data:
+                        bx = b_data["x"]
+                        by = b_data["y"]
+                        # Opcjonalnie scale, type itp.
+                        b = Building(bx, by, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0)
+                        if self.camera:
+                            b.camera = self.camera
+                        self.buildings.append(b)
+                print(f"[LEVEL] Załadowano {len(self.buildings)} budynków z {BUILDINGS_JSON_PATH}")
+            except Exception as e:
+                print(f"[LEVEL][WARN] Błąd ładowania budynków: {e}")
+        
+        # Jeśli nie ma pliku lub pusty, dodaj przykładowy (opcjonalnie)
+        if not self.buildings:
+            b = Building(800, 600, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0)
+            if self.camera:
+                b.camera = self.camera
+            self.buildings.append(b)
 
         # pociski gracza (specjal skill – prawy przycisk myszy)
         self.player_bullets: list[PlayerBullet] = []
@@ -156,6 +195,11 @@ class Game(BaseLevel):
         except Exception as e:
             print(f"[WARN] Game sound fail.mp3 error: {e}")
 
+        # --- Slow Time Logic ---
+        self.slow_time_active = False
+        self.slow_time_end_ms = 0
+        self.pre_slow_time_scale = 1.0
+
     # ======================================================================
     # EVENTY SPECYFICZNE DLA LEVEL7
     # ======================================================================
@@ -169,6 +213,77 @@ class Game(BaseLevel):
             # prawy przycisk -> strzał kulą z dymem
             if event.button == 3:
                 self._shoot_special()
+        
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                self._try_activate_slow_time()
+
+    def _try_activate_slow_time(self) -> None:
+        if self.slow_time_active:
+            return
+        
+        if self.player.slow_time_charge >= self.player.max_slow_time_charge:
+            # Activate
+            self.player.slow_time_charge = 0
+            self.slow_time_active = True
+            
+            # Zapisujemy obecny time_scale, żeby potem przywrócić (lub po prostu ustawiamy 0.5)
+            # Ale uwaga: BaseLevel.time_scale może być zmieniane scrollem.
+            # Jeśli chcemy "zwolnić o połowę", to bierzemy current * 0.5.
+            # Ale jeśli user zmieni scrollem w trakcie, to co?
+            # Przyjmijmy, że slow time wymusza 0.5x względem tego co było w momencie aktywacji
+            # i blokuje zmianę scrollem? Albo po prostu ustawia 0.5.
+            # User: "czas zwalnia o połowę na 10 sekund".
+            # Interpretacja: time_scale = time_scale * 0.5
+            
+            self.pre_slow_time_scale = self.time_scale
+            new_scale = self.time_scale * 0.5
+            # Ustawiamy w BaseLevel (to zaktualizuje TimeManager i obiekty)
+            self.time_scale = new_scale
+            self.time_manager.set_time_scale(self.time_scale)
+            self._apply_time_scale_to_objects()
+            if self.audio_manager:
+                self.audio_manager.set_time_scale(self.time_scale)
+            
+            self.slow_time_end_ms = self.time_manager.time + 10000 # 10s in game time? Or real time?
+            # "na 10 sekund" - zazwyczaj real time, bo jak zwolnimy czas gry, to 10s gry będzie trwało 20s.
+            # Użyjmy pygame.time.get_ticks() dla real time duration.
+            self.slow_time_end_real_ms = pygame.time.get_ticks() + 10000
+            
+            self.player.is_slow_time_active = True
+            
+            if self.sound_time_stop:
+                self.sound_time_stop.play()
+                
+            print("[GAME] Slow Time ACTIVATED!")
+
+    def _update_slow_time(self) -> None:
+        if not self.slow_time_active:
+            return
+            
+        now = pygame.time.get_ticks()
+        if now >= self.slow_time_end_real_ms:
+            # Deactivate
+            self.slow_time_active = False
+            self.player.is_slow_time_active = False
+            
+            # Restore time scale
+            # Opcjonalnie: przywracamy to co było, albo po prostu mnożymy x2
+            # self.time_scale = self.pre_slow_time_scale 
+            # Ale jeśli user scrolował? BaseLevel.handle_events pozwala scrolować.
+            # Jeśli pozwolimy scrolować w trakcie slow motion, to przywrócenie starej wartości może być dziwne.
+            # Przywróćmy po prostu x2, zakładając że to "odwrócenie" efektu.
+            self.time_scale = self.time_scale * 2.0
+            
+            # Clamp to limits defined in BaseLevel
+            self.time_scale = max(self.min_time_scale, min(self.max_time_scale, self.time_scale))
+            
+            self.time_manager.set_time_scale(self.time_scale)
+            self._apply_time_scale_to_objects()
+            if self.audio_manager:
+                self.audio_manager.set_time_scale(self.time_scale)
+            
+            print("[GAME] Slow Time ENDED.")
 
     # ======================================================================
     # SPECJALNY STRZAŁ GRACZA (piłka + smoke)
@@ -275,6 +390,59 @@ class Game(BaseLevel):
         self.smoke_explosions = [
             t for t in self.smoke_explosions if len(t.particles) > 0
         ]
+        
+        # --- Slow Time Update ---
+        self._update_slow_time()
+        
+        # --- Spawnowanie wrogów ---
+        self.enemy_spawn_timer -= scaled_dt
+        if self.enemy_spawn_timer <= 0:
+            self._spawn_enemy()
+            # Losowy czas do następnego spawnu: 2.0 - 3.0 sekundy
+            self.enemy_spawn_timer = random.uniform(2.0, 3.0)
+
+    def _spawn_enemy(self) -> None:
+        """Tworzy nowego wroga w losowym miejscu mapy (bezpiecznym)."""
+        
+        # Próbujemy znaleźć bezpieczne miejsce (max 10 prób)
+        for _ in range(10):
+            x = random.randint(0, self.map_width)
+            y = random.randint(0, self.map_height)
+            
+            # 1. Sprawdź dystans do gracza (nie za blisko)
+            px, py = self.player.rect.center
+            dist = math.hypot(x - px, y - py)
+            if dist < 800: # Minimum 800px od gracza
+                continue
+                
+            # 2. Sprawdź kolizję z budynkami
+            # Tworzymy tymczasowy rect wroga (zakładamy rozmiar np. 60x60)
+            enemy_rect = pygame.Rect(0, 0, 60, 60)
+            enemy_rect.center = (x, y)
+            
+            collides = False
+            for b in self.buildings:
+                # Sprawdzamy kolizję z collision_rect budynku
+                if b.collision_rect.colliderect(enemy_rect):
+                    collides = True
+                    break
+            
+            if collides:
+                continue
+                
+            # Jeśli przeszło testy -> tworzymy wroga
+            enemy = RangedEnemy(
+                x, y,
+                SCREEN_WIDTH, SCREEN_HEIGHT,
+                1.0,
+                self.player
+            )
+            enemy.map_width = self.map_width
+            enemy.map_height = self.map_height
+            enemy.set_attack_cooldown(4)
+            
+            self.add_enemy(enemy)
+            return
 
     def _handle_bullet_enemy_collisions(self) -> None:
         enemies_hit = set()
@@ -321,6 +489,9 @@ class Game(BaseLevel):
         """
         if getattr(enemy, "destroying", False):
             return
+
+        # Dodajemy kill dla gracza (monety + ładunek wave)
+        self.player.add_kill()
 
         enemy.destroying = True
         enemy.destroy_scale = 1.0

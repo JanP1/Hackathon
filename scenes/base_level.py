@@ -35,6 +35,7 @@ class BaseLevel(ABC):
         mexican_mp3_path: Optional[Path] = None,
         enable_background_mp3: bool = True,
         game_state_manager=None,
+        music_start_delay: float = 0.0,
     ) -> None:
         # podstawowe referencje
         self.screen = screen
@@ -69,6 +70,7 @@ class BaseLevel(ABC):
                 bit_mid_path=bit_mid_path,
                 mexican_mp3_path=mexican_mp3_path,
                 enable_background_mp3=enable_background_mp3,
+                start_delay_sec=music_start_delay,
             )
             self.audio_manager.set_time_scale(self.time_scale)
 

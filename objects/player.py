@@ -178,6 +178,20 @@ class Player(GameObject):
         self.rect.centerx = x_pos
         self.rect.centery = y_pos
 
+        # --- Economy & Ability ---
+        self.coins = 0
+        self.wave_charge = 0
+        self.max_wave_charge = 5
+        
+        # --- Slow Time Ability ---
+        self.slow_time_charge = 0
+        self.max_slow_time_charge = 10
+        self.is_slow_time_active = False
+        
+        self.coin_anim_timer = 0
+        self.coin_font = pygame.font.SysFont("consolas", 48, bold=True)
+        self.small_font = pygame.font.SysFont("consolas", 20, bold=True)
+
     # ======================================================================
     # API mapy, czasu, efektów
     # ======================================================================
@@ -318,6 +332,14 @@ class Player(GameObject):
         pressed = pygame.mouse.get_pressed(num_buttons=3)
         if pressed[0]:
             if not self._mouse_was_pressed:
+                # Sprawdzenie naładowania umiejętności (5 killi)
+                if self.wave_charge < self.max_wave_charge:
+                    # Opcjonalnie dźwięk błędu, jeśli chcemy sygnalizować brak naładowania
+                    # if self.sound_fail:
+                    #     self.sound_fail.play()
+                    self._mouse_was_pressed = True
+                    return
+
                 now = self.time_manager.time
                 if now >= self._next_attack_time_ms:
                     # sprawdzenie beatu
@@ -374,6 +396,9 @@ class Player(GameObject):
                         self.wave_damage_bonus += 15
                         # proste: zapal timer napisu PERFECT! na ~0.6 s
                         self.perfect_text_timer_ms = 600
+                        
+                        # Zużywamy ładunek po udanym ataku
+                        self.wave_charge = 0
                         
                         if self.sound_left:
                             self.sound_left.play()
@@ -433,6 +458,9 @@ class Player(GameObject):
         # zmniejszamy timer PERFECT!
         if self.perfect_text_timer_ms > 0:
             self.perfect_text_timer_ms = max(0, self.perfect_text_timer_ms - delta_ms)
+
+        if self.coin_anim_timer > 0:
+            self.coin_anim_timer = max(0, self.coin_anim_timer - delta_ms)
 
     def draw(self, screen: pygame.Surface) -> None:
         cam_x, cam_y = 0, 0
@@ -522,6 +550,9 @@ class Player(GameObject):
         # Pasek życia
         self._draw_health_bar(screen)
 
+        # HUD (Coins + Wave)
+        self._draw_hud(screen)
+
         # ===========================
         # NAPIS PERFECT!
         # ===========================
@@ -590,3 +621,138 @@ class Player(GameObject):
             if self.max_health <= 0
             else max(0.0, min(1.0, self.current_health / self.max_health))
         )
+
+    def add_kill(self) -> None:
+        self.coins += 1
+        if self.wave_charge < self.max_wave_charge:
+            self.wave_charge += 1
+        if self.slow_time_charge < self.max_slow_time_charge:
+            self.slow_time_charge += 1
+        # Trigger coin animation
+        self.coin_anim_timer = 500
+
+    def _draw_hud(self, screen: pygame.Surface) -> None:
+        # 1. Coins
+        # Icon
+        icon_radius = 25
+        icon_x = self.SCREEN_W - 160
+        icon_y = 50
+        pygame.draw.circle(screen, (255, 215, 0), (icon_x, icon_y), icon_radius)
+        pygame.draw.circle(screen, (200, 170, 0), (icon_x, icon_y), icon_radius, 3) # border
+        
+        # Text
+        scale = 1.0
+        if self.coin_anim_timer > 0:
+            t = self.coin_anim_timer / 500.0
+            s = math.sin(t * math.pi) 
+            scale = 1.0 + 0.5 * s
+            
+        text = f"{self.coins}"
+        txt_surf = self.coin_font.render(text, True, (255, 215, 0))
+        
+        if scale != 1.0:
+            w = int(txt_surf.get_width() * scale)
+            h = int(txt_surf.get_height() * scale)
+            txt_surf = pygame.transform.scale(txt_surf, (w, h))
+            
+        text_x = icon_x + 35
+        text_y = icon_y - txt_surf.get_height() // 2
+        screen.blit(txt_surf, (text_x, text_y))
+        
+        # 2. Wave Ability
+        wave_x = self.SCREEN_W - 110
+        wave_y = 100
+        wave_w = 60
+        wave_h = 60
+        
+        is_full = (self.wave_charge >= self.max_wave_charge)
+        
+        draw_x = wave_x
+        draw_y = wave_y
+        draw_w = wave_w
+        draw_h = wave_h
+        
+        if is_full:
+            draw_x -= 8
+            draw_y -= 8
+            draw_w += 16
+            draw_h += 16
+            
+        rect = pygame.Rect(draw_x, draw_y, draw_w, draw_h)
+        pygame.draw.rect(screen, (100, 100, 100), rect)
+        
+        if self.wave_charge > 0:
+            fill_pct = self.wave_charge / self.max_wave_charge
+            fill_h = int(draw_h * fill_pct)
+            fill_rect = pygame.Rect(draw_x, draw_y + draw_h - fill_h, draw_w, fill_h)
+            pygame.draw.rect(screen, (0, 255, 255), fill_rect)
+            
+        border_color = (255, 255, 255) if is_full else (50, 50, 50)
+        pygame.draw.rect(screen, border_color, rect, 4 if is_full else 2)
+        
+        start_x = draw_x + 8
+        end_x = draw_x + draw_w - 8
+        mid_y = draw_y + draw_h / 2
+        points = []
+        steps = int(end_x - start_x)
+        if steps > 0:
+            for i in range(steps):
+                x = start_x + i
+                y = mid_y + math.sin(i * 0.2) * (draw_h * 0.25)
+                points.append((x, y))
+            if len(points) > 1:
+                pygame.draw.lines(screen, (0, 0, 0), False, points, 3)
+
+        # Wave count text
+        if not is_full:
+            needed = self.max_wave_charge - self.wave_charge
+            count_surf = self.small_font.render(f"{needed}", True, (200, 200, 200))
+            screen.blit(count_surf, (draw_x + draw_w + 5, draw_y + draw_h // 2 - 10))
+
+        # 3. Slow Time Ability
+        # Below Wave
+        slow_x = wave_x
+        slow_y = wave_y + 80 # Spacing
+        slow_w = 60
+        slow_h = 60
+        
+        is_slow_full = (self.slow_time_charge >= self.max_slow_time_charge)
+        
+        s_draw_x = slow_x
+        s_draw_y = slow_y
+        s_draw_w = slow_w
+        s_draw_h = slow_h
+        
+        if is_slow_full:
+            s_draw_x -= 8
+            s_draw_y -= 8
+            s_draw_w += 16
+            s_draw_h += 16
+            
+        s_rect = pygame.Rect(s_draw_x, s_draw_y, s_draw_w, s_draw_h)
+        pygame.draw.rect(screen, (100, 100, 100), s_rect)
+        
+        if self.slow_time_charge > 0:
+            fill_pct = self.slow_time_charge / self.max_slow_time_charge
+            fill_h = int(s_draw_h * fill_pct)
+            fill_rect = pygame.Rect(s_draw_x, s_draw_y + s_draw_h - fill_h, s_draw_w, fill_h)
+            pygame.draw.rect(screen, (100, 0, 255), fill_rect) # Purple for time
+            
+        s_border_color = (255, 255, 255) if is_slow_full else (50, 50, 50)
+        pygame.draw.rect(screen, s_border_color, s_rect, 4 if is_slow_full else 2)
+        
+        # Icon symbol (Clock / Hourglass simplified)
+        # Draw a circle and hands
+        cx = s_draw_x + s_draw_w // 2
+        cy = s_draw_y + s_draw_h // 2
+        cr = s_draw_w // 3
+        pygame.draw.circle(screen, (200, 200, 200), (cx, cy), cr, 2)
+        pygame.draw.line(screen, (200, 200, 200), (cx, cy), (cx, cy - cr + 4), 2)
+        pygame.draw.line(screen, (200, 200, 200), (cx, cy), (cx + cr - 4, cy), 2)
+
+        # Slow count text
+        if not is_slow_full:
+            needed = self.max_slow_time_charge - self.slow_time_charge
+            count_surf = self.small_font.render(f"{needed}", True, (200, 200, 200))
+            screen.blit(count_surf, (s_draw_x + s_draw_w + 5, s_draw_y + s_draw_h // 2 - 10))
+

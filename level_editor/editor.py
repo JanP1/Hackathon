@@ -91,12 +91,13 @@ def main():
         building_names.append(default_name)
         
     current_idx = 0
+    current_scale = 1.0 # Default scale
 
     # Camera
     cam_x = 0
     cam_y = 0
 
-    # Buildings list: [{"x": x, "y": y, "type": "..."}]
+    # Buildings list: [{"x": x, "y": y, "type": "...", "scale": 1.0}]
     buildings = []
     
     # Current level file
@@ -144,7 +145,8 @@ def main():
                     buildings.append({
                         "x": int(world_x), 
                         "y": int(world_y),
-                        "type": building_names[current_idx]
+                        "type": building_names[current_idx],
+                        "scale": current_scale
                     })
                     
                 elif event.button == 3: # Right Click - Remove
@@ -153,12 +155,17 @@ def main():
                     min_dist = 10000
                     for b in buildings:
                         b_type = b.get("type", "house.png")
+                        b_scale = b.get("scale", 1.0)
                         img = building_images.get(b_type)
                         if not img:
                             img = list(building_images.values())[0]
+                        
+                        # Scale img for check
+                        w = int(img.get_width() * b_scale)
+                        h = int(img.get_height() * b_scale)
                             
-                        bx = b["x"] + img.get_width() // 2
-                        by = b["y"] + img.get_height() // 2
+                        bx = b["x"] + w // 2
+                        by = b["y"] + h // 2
                         dist = ((bx - world_x)**2 + (by - world_y)**2)**0.5
                         if dist < 100 and dist < min_dist: # Threshold
                             min_dist = dist
@@ -173,6 +180,13 @@ def main():
                     current_bg_idx = (current_bg_idx + 1) % len(bg_names)
                 elif event.key == pygame.K_LEFT:
                     current_bg_idx = (current_bg_idx - 1) % len(bg_names)
+                
+                # Scale switching
+                elif event.key == pygame.K_1: current_scale = 0.33
+                elif event.key == pygame.K_2: current_scale = 0.5
+                elif event.key == pygame.K_3: current_scale = 1.0
+                elif event.key == pygame.K_4: current_scale = 2.0
+                elif event.key == pygame.K_5: current_scale = 3.0
                 
                 # Saving
                 elif event.key == pygame.K_s:
@@ -225,24 +239,37 @@ def main():
         # Draw Buildings
         for b in buildings:
             b_type = b.get("type", "house.png")
+            b_scale = b.get("scale", 1.0)
             img = building_images.get(b_type)
             if not img:
                 # Fallback to first available or house.png
                 img = building_images.get("house.png", list(building_images.values())[0])
+            
+            if b_scale != 1.0:
+                w = int(img.get_width() * b_scale)
+                h = int(img.get_height() * b_scale)
+                img = pygame.transform.scale(img, (w, h))
+                
             screen.blit(img, (b["x"] - cam_x, b["y"] - cam_y))
 
         # Draw HUD
         font = pygame.font.SysFont("arial", 20)
-        txt = font.render(f"Buildings: {len(buildings)} | Pos: {cam_x},{cam_y}", True, WHITE)
+        txt = font.render(f"Buildings: {len(buildings)} | Pos: {cam_x},{cam_y} | Scale: {current_scale}", True, WHITE)
         screen.blit(txt, (10, 10))
         
         # Draw Preview (Top Right)
         curr_name = building_names[current_idx]
         curr_img = building_images[curr_name]
         
+        # Apply current scale to preview
+        if current_scale != 1.0:
+            w = int(curr_img.get_width() * current_scale)
+            h = int(curr_img.get_height() * current_scale)
+            curr_img = pygame.transform.scale(curr_img, (w, h))
+        
         # Draw a background for preview
         prev_rect = curr_img.get_rect()
-        # Scale down if too big
+        # Scale down if too big for preview box
         preview_scale = 1.0
         if prev_rect.width > 150 or prev_rect.height > 150:
             preview_scale = 150 / max(prev_rect.width, prev_rect.height)

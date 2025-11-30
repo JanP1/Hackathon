@@ -54,6 +54,7 @@ uniform float u_waveTint;
 // Nowe efekty
 uniform float u_invert;      // 0.0 = brak, 1.0 = inwersja
 uniform float u_distortion;  // siła globalnego distortion
+uniform float u_damageTint;  // 0.0 = brak, 1.0 = max czerwony
 
 varying vec2 v_tex;
 
@@ -163,7 +164,11 @@ void main() {
 
     // delikatna, półprzezroczysta czerwień
     vec3 redColor = vec3(1.0, 0.15, 0.15);
-    col.rgb = mix(col.rgb, redColor, clamp(tintFactor, 0.0, 1.0));
+    
+    // Sumujemy tint z efektów (trójkąty/fale) i tint od obrażeń
+    float totalTint = clamp(tintFactor + u_damageTint, 0.0, 1.0);
+    
+    col.rgb = mix(col.rgb, redColor, totalTint);
 
     // Inwersja kolorów
     if (u_invert > 0.5) {
@@ -220,6 +225,7 @@ class GLPostProcessor:
 
         self.u_invert = glGetUniformLocation(self.program, "u_invert")
         self.u_distortion = glGetUniformLocation(self.program, "u_distortion")
+        self.u_damageTint = glGetUniformLocation(self.program, "u_damageTint")
 
         # wartości domyślne parametrów
         glUniform2f(self.u_resolution, float(self.width), float(self.height))
@@ -234,6 +240,7 @@ class GLPostProcessor:
         
         glUniform1f(self.u_invert, 0.0)
         glUniform1f(self.u_distortion, 0.0)
+        glUniform1f(self.u_damageTint, 0.0)
 
         # sampler
         glUniform1i(self.u_scene, 0)  # tekstura na jednostce 0
@@ -334,6 +341,7 @@ class GLPostProcessor:
         current_time_ms: float,
         invert: bool = False,
         distortion_strength: float = 0.0,
+        damage_tint: float = 0.0,
     ):
         # upload tekstury sceny
         self._upload_scene_texture(surface)
@@ -354,6 +362,7 @@ class GLPostProcessor:
         # efekty
         glUniform1f(self.u_invert, 1.0 if invert else 0.0)
         glUniform1f(self.u_distortion, distortion_strength)
+        glUniform1f(self.u_damageTint, damage_tint)
 
         # dane distortu
         self._upload_bullets(bullets)

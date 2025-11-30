@@ -7,7 +7,7 @@ class RangedEnemy(Enemy):
     def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float, target):
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale,
                         name="ranged_enemy", max_health=30, 
-                        attack_cooldown=4, damage=20)
+                        attack_cooldown=4, damage=10)
         
         self.rect.width = self.rect.width
         self.rect.height = self.rect.height

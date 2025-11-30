@@ -29,6 +29,8 @@ from objects.ranged_enemy import RangedEnemy
 from objects.melee_enemy import MeleeEnemy
 from objects.player_bullet import PlayerBullet
 from objects.building import Building
+from objects.game_object import GameObject
+from objects.potion import Potion
 
 from objects.audio_manager import Level1AudioManager  # już używany w BaseLevel
 from objects.debugHUD import Level1DebugHUD          # jw.
@@ -236,6 +238,9 @@ class Game(BaseLevel):
 
         # dymy eksplozji na wrogach
         self.smoke_explosions: list[SmokeTrail] = []
+
+        # loot
+        self.potions: list[Potion] = []
 
         # Dźwięk prawego przycisku
         self.sound_right = None
@@ -448,6 +453,9 @@ class Game(BaseLevel):
         # --- Sprawdzanie śmierci wrogów (z dowolnego źródła) ---
         self._check_enemy_deaths()
 
+        # --- Loot (Potions) ---
+        self._update_loot()
+
         # --- Kolizje z budynkami ---
         self._handle_building_collisions()
 
@@ -575,6 +583,10 @@ class Game(BaseLevel):
         # Dodajemy kill dla gracza (monety + ładunek wave)
         self.player.add_kill()
 
+        # Szansa na drop potki (1/5)
+        if random.random() < 0.2:
+            self._spawn_potion(enemy.rect.centerx, enemy.rect.centery)
+
         enemy.destroying = True
         enemy.destroy_scale = 1.0
         enemy.original_rect = enemy.rect.copy()
@@ -588,6 +600,27 @@ class Game(BaseLevel):
             dy = random.uniform(-1.0, 1.0)
             explosion.add_particle(ex, ey, dx, dy)
         self.smoke_explosions.append(explosion)
+
+    def _spawn_potion(self, x, y):
+        potion = Potion(x, y, SCREEN_WIDTH, SCREEN_HEIGHT)
+        if self.camera:
+            potion.camera = self.camera
+        self.potions.append(potion)
+
+    def _update_loot(self):
+        to_remove = []
+        for potion in self.potions:
+            # Check collision with player
+            if potion.rect.colliderect(self.player.rect):
+                # Heal player
+                if self.player.current_health < self.player.max_health:
+                    self.player.current_health = min(self.player.max_health, self.player.current_health + potion.heal_amount)
+                    # Opcjonalnie dźwięk podniesienia
+                    to_remove.append(potion)
+            
+        for p in to_remove:
+            if p in self.potions:
+                self.potions.remove(p)
 
     def _hit_enemy_with_special(self, enemy) -> None:
         # Ta metoda jest teraz zastąpiona przez _start_enemy_destruction
@@ -726,6 +759,18 @@ class Game(BaseLevel):
         Tu rysujemy wszystko co „wizualne” dla poziomu.
         Kolejność jak w oryginalnym level7 (prawie 1:1).
         """
+        # --- Camera Shake Application ---
+        shake_offset_x = 0
+        shake_offset_y = 0
+        if self.player.shake_timer > 0:
+             shake_strength = 15.0 * (self.player.shake_timer / 300.0)
+             shake_offset_x = random.uniform(-shake_strength, shake_strength)
+             shake_offset_y = random.uniform(-shake_strength, shake_strength)
+             
+             if self.camera:
+                 self.camera.x += shake_offset_x
+                 self.camera.y += shake_offset_y
+
         # tło: najpierw obrazek, jak nie ma to kolor
         if self.background_image is not None:
             # Rysujemy tło z przesunięciem kamery
@@ -757,8 +802,17 @@ class Game(BaseLevel):
         for trail in self.smoke_explosions:
             trail.draw(self.screen, self.camera)
 
+        # loot
+        for potion in self.potions:
+            potion.draw(self.screen)
+
         # gracz
         self.player.draw(self.screen)
+        
+        # --- Restore Camera (Undo Shake) ---
+        if self.camera and (shake_offset_x != 0 or shake_offset_y != 0):
+            self.camera.x -= shake_offset_x
+            self.camera.y -= shake_offset_y
 
 
 # -----------------------------
@@ -806,9 +860,12 @@ if __name__ == "__main__":
             if event.type == pygame.QUIT:
                 running = False
 
+        # --- Camera Shake Logic ---
+        # REMOVED: Logic moved to draw_level to avoid overwriting camera updates
+        
         # logika + rysowanie NA game_surface (CPU)
         game.run_frame(dt, events)
-
+        
         # Dane dla shadera bierzemy z EffectsManagera, ale musimy je
         # przesunąć o pozycję kamery, żeby zgadzały się z tym, co widać na ekranie.
         cam_x = game.camera.x if game.camera else 0
@@ -834,6 +891,13 @@ if __name__ == "__main__":
         # Efekty postprocess
         invert = game.slow_time_active
         distortion = 1.0 if game.slow_time_active else 0.0
+        
+        # Damage tint (red screen)
+        damage_tint = 0.0
+        if game.player.damage_tint_timer > 0:
+            # Fade out from red
+            # damage_tint_timer is in ms (starts at 200)
+            damage_tint = min(1.0, game.player.damage_tint_timer / 200.0) * 0.6 # max 0.6 opacity
 
         gl_post.render(
             game_surface, 
@@ -841,7 +905,8 @@ if __name__ == "__main__":
             waves_data_screen, 
             current_time_ms,
             invert=invert,
-            distortion_strength=distortion
+            distortion_strength=distortion,
+            damage_tint=damage_tint
         )
 
         pygame.display.flip()

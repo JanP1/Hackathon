@@ -6,7 +6,7 @@ class MeleeEnemy(Enemy):
     def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float, target):
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale,
                         name="melee_enemy", max_health=60, 
-                        attack_cooldown=2, damage=15)
+                        attack_cooldown=2, damage=10)
         
         self.target = target
         self.move_speed = 200.0
@@ -47,9 +47,15 @@ class MeleeEnemy(Enemy):
         self.rect.y = old_y
         
         self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
+        
+        self.damage_cooldown = 0.0
+        self.damage_interval = 1.0 # seconds
 
     def update_behavior(self, delta_time: float):
         dt_sec = delta_time / 1000.0
+        
+        if self.damage_cooldown > 0:
+            self.damage_cooldown -= dt_sec
         
         # Animation
         if self.frames:
@@ -77,6 +83,10 @@ class MeleeEnemy(Enemy):
                     self.rect.y += move_y
                     
                 self.facing_right = dx > 0
+            else:
+                # Attack logic here if continuous
+                if self.damage_cooldown <= 0:
+                    self.on_attack()
 
     def on_attack(self):
         # Check distance
@@ -86,8 +96,11 @@ class MeleeEnemy(Enemy):
             dist = ((tx-sx)**2 + (ty-sy)**2)**0.5
             
             if dist <= self.attack_range + 30: # Tolerance
-                print(f"{self.name} melee attack!")
-                self.target.take_damage(self.damage)
+                if self.damage_cooldown <= 0:
+                    print(f"{self.name} melee attack!")
+                    # Pass source_pos for knockback
+                    self.target.take_damage(self.damage, source_pos=self.rect.center)
+                    self.damage_cooldown = self.damage_interval
 
     def draw_attack(self, screen):
         # Visual feedback for attack could be added here

@@ -102,8 +102,14 @@ class Player(GameObject):
         self.attack_anim_speed: float = 0.4
 
         # --- Health system ---
-        self.max_health = 100
+        self.max_health = 200
         self.current_health = self.max_health
+
+        # --- Damage Feedback ---
+        self.damage_tint_timer = 0.0
+        self.shake_timer = 0.0
+        self.knockback_velocity = pygame.math.Vector2(0, 0)
+        self.knockback_friction = 0.9
 
         # --- Movement parameters ---
         self.speed = 5
@@ -163,6 +169,7 @@ class Player(GameObject):
         # --- Sounds ---
         self.sound_left = None
         self.sound_fail = None
+        self.sound_hurt = None
         try:
             self.sound_left = pygame.mixer.Sound("assets/sounds/left.mp3")
             self.sound_left.set_volume(0.5)
@@ -174,6 +181,12 @@ class Player(GameObject):
             self.sound_fail.set_volume(0.5)
         except Exception as e:
             print(f"[WARN] Player sound fail.mp3 error: {e}")
+            
+        try:
+            self.sound_hurt = pygame.mixer.Sound("assets/sounds/zabolalo.mp3")
+            self.sound_hurt.set_volume(0.6)
+        except Exception as e:
+            print(f"[WARN] Player sound zabolalo.mp3 error: {e}")
 
         self.rect.centerx = x_pos
         self.rect.centery = y_pos
@@ -221,6 +234,21 @@ class Player(GameObject):
     # ======================================================================
 
     def _handle_input(self) -> None:
+        # Apply knockback
+        if self.knockback_velocity.length_squared() > 0.1:
+            self.rect.x += int(self.knockback_velocity.x)
+            self.rect.y += int(self.knockback_velocity.y)
+            self.knockback_velocity *= self.knockback_friction
+            if self.knockback_velocity.length_squared() < 0.1:
+                self.knockback_velocity = pygame.math.Vector2(0, 0)
+            
+            # Clamp to map
+            self.rect.x = int(max(0, min(self.map_width - self.rect.width, self.rect.x)))
+            self.rect.y = int(max(0, min(self.map_height - self.rect.height, self.rect.y)))
+            return # Disable normal movement during strong knockback? Or just add? Let's disable for a bit or just add.
+            # Actually, let's just add it to position and allow player to fight against it slightly or just drift.
+            # If we return here, player loses control. Let's allow control but knockback pushes.
+        
         keys = pygame.key.get_pressed()
         direction = pygame.math.Vector2(0, 0)
 
@@ -462,6 +490,13 @@ class Player(GameObject):
         if self.coin_anim_timer > 0:
             self.coin_anim_timer = max(0, self.coin_anim_timer - delta_ms)
 
+        # Feedback timers
+        if self.damage_tint_timer > 0:
+            self.damage_tint_timer = max(0, self.damage_tint_timer - delta_ms)
+        
+        if self.shake_timer > 0:
+            self.shake_timer = max(0, self.shake_timer - delta_ms)
+
     def draw(self, screen: pygame.Surface) -> None:
         cam_x, cam_y = 0, 0
         if self.camera is not None:
@@ -589,8 +624,14 @@ class Player(GameObject):
         pygame.draw.rect(
             screen, (255, 255, 255), (x, y, int(bar_width), bar_height), 2
         )
+        
+        # Draw HP Text
+        hp_text = f"{int(self.current_health)} / {self.max_health}"
+        text_surf = self.small_font.render(hp_text, True, (255, 255, 255))
+        text_rect = text_surf.get_rect(center=(x + bar_width // 2, y + bar_height // 2))
+        screen.blit(text_surf, text_rect)
 
-    def take_damage(self, amount: int) -> None:
+    def take_damage(self, amount: int, source_pos: tuple[int, int] = None) -> None:
         if not self.is_alive:
             return
         try:
@@ -600,6 +641,26 @@ class Player(GameObject):
         if dmg <= 0:
             return
         self.current_health -= dmg
+        
+        # Feedback
+        self.damage_tint_timer = 200.0 # ms
+        self.shake_timer = 300.0 # ms
+        
+        if self.sound_hurt:
+            self.sound_hurt.play()
+            
+        # Knockback
+        if source_pos:
+            sx, sy = source_pos
+            cx, cy = self.rect.center
+            dx = cx - sx
+            dy = cy - sy
+            dist = math.hypot(dx, dy)
+            if dist > 0:
+                # Push away
+                force = 20.0 # Knockback strength
+                self.knockback_velocity = pygame.math.Vector2(dx/dist * force, dy/dist * force)
+
         if self.current_health <= 0:
             self.current_health = 0
             self.is_alive = False

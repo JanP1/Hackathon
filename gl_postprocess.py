@@ -51,6 +51,10 @@ uniform float u_waveStrength;
 uniform float u_triTint;
 uniform float u_waveTint;
 
+// Nowe efekty
+uniform float u_invert;      // 0.0 = brak, 1.0 = inwersja
+uniform float u_distortion;  // siła globalnego distortion
+
 varying vec2 v_tex;
 
 void main() {
@@ -59,6 +63,12 @@ void main() {
     vec2 fragCoord = uv * u_resolution;
 
     vec2 displaced = fragCoord;
+
+    // Globalne distortion (np. falowanie całego ekranu)
+    if (u_distortion > 0.0) {
+        float wave = sin(uv.y * 20.0 + u_time * 5.0) * 0.005 * u_distortion;
+        displaced.x += wave * u_resolution.x;
+    }
 
     // zbieramy, ile czerwonego tintu powinniśmy nałożyć (0..1)
     float tintFactor = 0.0;
@@ -155,6 +165,11 @@ void main() {
     vec3 redColor = vec3(1.0, 0.15, 0.15);
     col.rgb = mix(col.rgb, redColor, clamp(tintFactor, 0.0, 1.0));
 
+    // Inwersja kolorów
+    if (u_invert > 0.5) {
+        col.rgb = 1.0 - col.rgb;
+    }
+
     gl_FragColor = col;
 }
 """
@@ -203,6 +218,9 @@ class GLPostProcessor:
         self.u_triTint = glGetUniformLocation(self.program, "u_triTint")
         self.u_waveTint = glGetUniformLocation(self.program, "u_waveTint")
 
+        self.u_invert = glGetUniformLocation(self.program, "u_invert")
+        self.u_distortion = glGetUniformLocation(self.program, "u_distortion")
+
         # wartości domyślne parametrów
         glUniform2f(self.u_resolution, float(self.width), float(self.height))
         glUniform1f(self.u_triLength, 220.0)
@@ -213,6 +231,9 @@ class GLPostProcessor:
         # domyślna siła czerwonego tintu (0..1)
         glUniform1f(self.u_triTint, 0.1)
         glUniform1f(self.u_waveTint, 0.1)
+        
+        glUniform1f(self.u_invert, 0.0)
+        glUniform1f(self.u_distortion, 0.0)
 
         # sampler
         glUniform1i(self.u_scene, 0)  # tekstura na jednostce 0
@@ -311,6 +332,8 @@ class GLPostProcessor:
         bullets: list[tuple[float, float, float, float]],
         waves: list[tuple[float, float, float, float]],
         current_time_ms: float,
+        invert: bool = False,
+        distortion_strength: float = 0.0,
     ):
         # upload tekstury sceny
         self._upload_scene_texture(surface)
@@ -327,6 +350,10 @@ class GLPostProcessor:
 
         # czas do obliczenia promienia fali
         glUniform1f(self.u_currentTime, float(current_time_ms))
+        
+        # efekty
+        glUniform1f(self.u_invert, 1.0 if invert else 0.0)
+        glUniform1f(self.u_distortion, distortion_strength)
 
         # dane distortu
         self._upload_bullets(bullets)

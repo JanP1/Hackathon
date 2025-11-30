@@ -830,8 +830,19 @@ if __name__ == "__main__":
         # Przekazujemy też aktualny czas do shadera, aby mógł animować fale
         # Używamy czasu z effects_manager, który uwzględnia time_scale
         current_time_ms = game.effects_manager.current_time
+        
+        # Efekty postprocess
+        invert = game.slow_time_active
+        distortion = 1.0 if game.slow_time_active else 0.0
 
-        gl_post.render(game_surface, bullets_data_screen, waves_data_screen, current_time_ms)
+        gl_post.render(
+            game_surface, 
+            bullets_data_screen, 
+            waves_data_screen, 
+            current_time_ms,
+            invert=invert,
+            distortion_strength=distortion
+        )
 
         pygame.display.flip()
 

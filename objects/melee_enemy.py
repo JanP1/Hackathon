@@ -5,7 +5,7 @@ from objects.enemy import Enemy
 class MeleeEnemy(Enemy):
     def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float, target):
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale,
-                        name="melee_enemy", max_health=100, 
+                        name="melee_enemy", max_health=60, 
                         attack_cooldown=2, damage=15)
         
         self.target = target

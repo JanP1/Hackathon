@@ -1,4 +1,5 @@
 import pygame
+from pathlib import Path
 from objects.enemy import Enemy
 from objects.projectile import Projectile
 
@@ -26,6 +27,37 @@ class RangedEnemy(Enemy):
 
         self.is_alive = True
         self.is_active = True
+
+        # Load animation (Guitar Hit)
+        self.frames = []
+        self.current_frame_idx = 0
+        self.animation_timer = 0.0
+        self.frame_duration = 0.1 # seconds per frame
+        
+        base_path = Path("assets/pictures/guitar_hit_animation")
+        if base_path.exists():
+            files = sorted([f for f in base_path.iterdir() if f.suffix.lower() == '.png'])
+            for f in files:
+                try:
+                    img = pygame.image.load(str(f)).convert_alpha()
+                    if scale != 1.0:
+                        w = int(img.get_width() * scale)
+                        h = int(img.get_height() * scale)
+                        img = pygame.transform.scale(img, (w, h))
+                    self.frames.append(img)
+                except Exception as e:
+                    print(f"Error loading frame {f}: {e}")
+        
+        if not self.frames:
+            self.frames.append(self.sprite)
+            
+        self.sprite = self.frames[0]
+        # Update rect size but keep position
+        old_x, old_y = self.rect.x, self.rect.y
+        self.rect = self.sprite.get_rect()
+        self.rect.x = old_x
+        self.rect.y = old_y
+        self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
     
 
     def projectile_check_collision(self):
@@ -49,6 +81,16 @@ class RangedEnemy(Enemy):
         delta_time jest w milisekundach, przeliczamy na sekundy.
         """
         dt_sec = delta_time / 1000.0
+        
+        # Animation
+        if self.frames:
+            self.animation_timer += dt_sec
+            if self.animation_timer >= self.frame_duration:
+                self.animation_timer = 0
+                self.current_frame_idx = (self.current_frame_idx + 1) % len(self.frames)
+                self.sprite = self.frames[self.current_frame_idx]
+                self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
+
         # Keep distance from target
         if self.target_x is not None and self.target_y is not None:
             dx = self.rect.centerx - self.target_x

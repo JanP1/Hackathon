@@ -26,6 +26,7 @@ from objects.effects_manager import EffectsManager  # używany w BaseLevel, impo
 from objects.smoke import SmokeTrail
 from objects.bpm_counter import BPMCounter  # używany w BaseLevel
 from objects.ranged_enemy import RangedEnemy
+from objects.melee_enemy import MeleeEnemy
 from objects.player_bullet import PlayerBullet
 from objects.building import Building
 
@@ -93,26 +94,66 @@ class Game(BaseLevel):
         )
 
         # ------------------------
+        # WCZYTYWANIE DANYCH POZIOMU (JSON)
+        # ------------------------
+        self.buildings_data = []
+        self.bg_filename = "main_background.png"
+        
+        if BUILDINGS_JSON_PATH.exists():
+            try:
+                with open(BUILDINGS_JSON_PATH, "r") as f:
+                    data = json.load(f)
+                    # Obsługa nowego formatu (dict) i starego (list)
+                    if isinstance(data, dict):
+                        self.buildings_data = data.get("buildings", [])
+                        self.bg_filename = data.get("background", "main_background.png")
+                    elif isinstance(data, list):
+                        self.buildings_data = data
+                        self.bg_filename = "main_background.png"
+                        
+                print(f"[LEVEL] Wczytano dane poziomu. Tło: {self.bg_filename}, Budynki: {len(self.buildings_data)}")
+            except Exception as e:
+                print(f"[LEVEL][WARN] Błąd parsowania JSON: {e}")
+
+        # ------------------------
         # TŁO – obraz zamiast jednolitego koloru
         # ------------------------
         # UWAGA: Zakładamy, że obraz tła ma rozmiar mapy, np. 4096x4096
         self.map_width, self.map_height = 4096, 4096
 
         self.background_image: pygame.Surface | None = None
+        
+        # Próbujemy załadować tło wskazane w JSON (z folderu backgrounds lub pictures)
+        # Szukamy najpierw w assets/pictures/backgrounds, potem w assets/pictures
+        bg_path = BASE_DIR / "assets" / "pictures" / "backgrounds" / self.bg_filename
+        if not bg_path.exists():
+             bg_path = BASE_DIR / "assets" / "pictures" / self.bg_filename
+             
         try:
-            img = pygame.image.load(str(MAIN_BG_PATH)).convert()
-            self.background_image = pygame.transform.scale(
-                img, (self.map_width, self.map_height)
-            )
-            # Ustawiamy rozmiar mapy w BaseLevel, żeby kamera wiedziała, jak się poruszać
-            self.set_map_size(self.map_width, self.map_height)
-            
-            # Gracz na środku mapy
-            self.player.rect.center = (self.map_width // 2, self.map_height // 2)
+            if bg_path.exists():
+                img = pygame.image.load(str(bg_path)).convert()
+                self.background_image = pygame.transform.scale(
+                    img, (self.map_width, self.map_height)
+                )
+                print(f"[BG] Załadowano tło: {bg_path}")
+            else:
+                print(f"[BG][WARN] Nie znaleziono pliku tła: {bg_path}")
+                # Fallback to MAIN_BG_PATH if different
+                if bg_path != MAIN_BG_PATH and MAIN_BG_PATH.exists():
+                     img = pygame.image.load(str(MAIN_BG_PATH)).convert()
+                     self.background_image = pygame.transform.scale(
+                        img, (self.map_width, self.map_height)
+                     )
+                     print(f"[BG] Załadowano tło domyślne: {MAIN_BG_PATH}")
 
-            print(f"[BG] Załadowano tło: {MAIN_BG_PATH}")
+            if self.background_image:
+                # Ustawiamy rozmiar mapy w BaseLevel, żeby kamera wiedziała, jak się poruszać
+                self.set_map_size(self.map_width, self.map_height)
+                # Gracz na środku mapy
+                self.player.rect.center = (self.map_width // 2, self.map_height // 2)
+                
         except Exception as e:
-            print(f"[BG][WARN] Nie udało się załadować {MAIN_BG_PATH}: {e}")
+            print(f"[BG][WARN] Błąd ładowania tła: {e}")
             self.background_image = None
 
         # ------------------------
@@ -130,8 +171,12 @@ class Game(BaseLevel):
         # Timer do spawnowania wrogów
         self.enemy_spawn_timer = 0.0
         self.enemy_spawn_interval = 2.5 # Średnio co 2.5s (losowo 2-3s)
+        
+        # Cooldown na prawy przycisk myszy (specjalny strzał)
+        self.special_attack_cooldown = 0.0
+        self.special_attack_max_cooldown = 1.0 # 1 sekunda
 
-                # jeden RangedEnemy na start – od razu z targetem = player
+                # jeden RangedEnemy na start
         ranged = RangedEnemy(
             600,
             400,
@@ -142,30 +187,42 @@ class Game(BaseLevel):
         )
         ranged.map_width = self.map_width
         ranged.map_height = self.map_height
-        ranged.set_attack_cooldown(4)  # co 4 beaty
-        self.add_enemy(ranged)         # ustawia mu time_scale + effects_manager
+        ranged.set_attack_cooldown(4)
+        self.add_enemy(ranged)
+
+        # jeden MeleeEnemy na start
+        melee = MeleeEnemy(
+            800,
+            400,
+            SCREEN_WIDTH,
+            SCREEN_HEIGHT,
+            1.0,
+            self.player
+        )
+        melee.map_width = self.map_width
+        melee.map_height = self.map_height
+        melee.set_attack_cooldown(2)
+        self.add_enemy(melee)
 
         # ------------------------
         # BUDYNKI
         # ------------------------
         self.buildings: list[Building] = []
         
-        if BUILDINGS_JSON_PATH.exists():
+        if self.buildings_data:
             try:
-                with open(BUILDINGS_JSON_PATH, "r") as f:
-                    data = json.load(f)
-                    for b_data in data:
-                        bx = b_data["x"]
-                        by = b_data["y"]
-                        b_type = b_data.get("type", "house.png")
-                        # Opcjonalnie scale, type itp.
-                        b = Building(bx, by, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0, sprite_name=b_type)
-                        if self.camera:
-                            b.camera = self.camera
-                        self.buildings.append(b)
-                print(f"[LEVEL] Załadowano {len(self.buildings)} budynków z {BUILDINGS_JSON_PATH}")
+                for b_data in self.buildings_data:
+                    bx = b_data["x"]
+                    by = b_data["y"]
+                    b_type = b_data.get("type", "house.png")
+                    # Opcjonalnie scale, type itp.
+                    b = Building(bx, by, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0, sprite_name=b_type)
+                    if self.camera:
+                        b.camera = self.camera
+                    self.buildings.append(b)
+                print(f"[LEVEL] Utworzono {len(self.buildings)} obiektów budynków.")
             except Exception as e:
-                print(f"[LEVEL][WARN] Błąd ładowania budynków: {e}")
+                print(f"[LEVEL][WARN] Błąd tworzenia budynków: {e}")
         
         # Jeśli nie ma pliku lub pusty, dodaj przykładowy (opcjonalnie)
         if not self.buildings:
@@ -291,6 +348,12 @@ class Game(BaseLevel):
     # ======================================================================
 
     def _shoot_special(self) -> None:
+        # Sprawdzenie cooldownu
+        if self.special_attack_cooldown > 0:
+            if self.sound_fail:
+                self.sound_fail.play()
+            return
+
         # Sprawdzenie beatu
         is_on_beat = False
         if self.bpm_counter:
@@ -303,6 +366,9 @@ class Game(BaseLevel):
 
         # Trafienie w beat -> PERFECT!
         self.player.perfect_text_timer_ms = 600
+        
+        # Reset cooldownu
+        self.special_attack_cooldown = self.special_attack_max_cooldown
 
         # pozycja gracza
         px, py = self.player.rect.center
@@ -395,6 +461,10 @@ class Game(BaseLevel):
         # --- Slow Time Update ---
         self._update_slow_time()
         
+        # --- Cooldown Update ---
+        if self.special_attack_cooldown > 0:
+            self.special_attack_cooldown -= scaled_dt
+        
         # --- Spawnowanie wrogów ---
         self.enemy_spawn_timer -= scaled_dt
         if self.enemy_spawn_timer <= 0:
@@ -432,15 +502,26 @@ class Game(BaseLevel):
                 continue
                 
             # Jeśli przeszło testy -> tworzymy wroga
-            enemy = RangedEnemy(
-                x, y,
-                SCREEN_WIDTH, SCREEN_HEIGHT,
-                1.0,
-                self.player
-            )
+            # Losujemy typ wroga: 50% szans na Ranged, 50% na Melee
+            if random.random() < 0.5:
+                enemy = RangedEnemy(
+                    x, y,
+                    SCREEN_WIDTH, SCREEN_HEIGHT,
+                    1.0,
+                    self.player
+                )
+                enemy.set_attack_cooldown(4)
+            else:
+                enemy = MeleeEnemy(
+                    x, y,
+                    SCREEN_WIDTH, SCREEN_HEIGHT,
+                    1.0,
+                    self.player
+                )
+                enemy.set_attack_cooldown(2) # Melee attacks faster
+
             enemy.map_width = self.map_width
             enemy.map_height = self.map_height
-            enemy.set_attack_cooldown(4)
             
             self.add_enemy(enemy)
             return

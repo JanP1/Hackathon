@@ -11,6 +11,7 @@ ASSETS_DIR = BASE_DIR / "assets"
 LEVELS_DIR = ASSETS_DIR / "levels"
 PICTURES_DIR = ASSETS_DIR / "pictures"
 BUILDINGS_DIR = PICTURES_DIR / "buildings"
+BACKGROUNDS_DIR = PICTURES_DIR / "backgrounds"
 
 # Constants
 SCREEN_WIDTH = 1280
@@ -28,18 +29,44 @@ BLUE = (0, 0, 255)
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Level Editor - WASD: Move, Click: Place, R-Click: Remove, S: Save")
+    pygame.display.set_caption("Level Editor - WASD: Move, Click: Place, R-Click: Remove, S: Save, Ctrl+S: Save New, Arrows: BG")
     clock = pygame.time.Clock()
 
-    # Load Background
-    bg_path = PICTURES_DIR / "main_background.png"
-    try:
-        bg_img = pygame.image.load(str(bg_path)).convert()
-        bg_img = pygame.transform.scale(bg_img, (MAP_WIDTH, MAP_HEIGHT))
-    except Exception as e:
-        print(f"Error loading background: {e}")
-        bg_img = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
-        bg_img.fill((50, 100, 50))
+    # Load Backgrounds
+    bg_images = []
+    bg_names = []
+    
+    # Add default main_background.png first
+    default_bg_path = PICTURES_DIR / "main_background.png"
+    if default_bg_path.exists():
+        try:
+            img = pygame.image.load(str(default_bg_path)).convert()
+            img = pygame.transform.scale(img, (MAP_WIDTH, MAP_HEIGHT))
+            bg_images.append(img)
+            bg_names.append("main_background.png")
+        except Exception as e:
+            print(f"Error loading default bg: {e}")
+
+    # Load from backgrounds folder
+    if BACKGROUNDS_DIR.exists():
+        for f in BACKGROUNDS_DIR.iterdir():
+            if f.is_file() and f.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+                try:
+                    img = pygame.image.load(str(f)).convert()
+                    img = pygame.transform.scale(img, (MAP_WIDTH, MAP_HEIGHT))
+                    bg_images.append(img)
+                    bg_names.append(f.name)
+                except Exception as e:
+                    print(f"Error loading bg {f.name}: {e}")
+    
+    if not bg_images:
+        # Fallback
+        surf = pygame.Surface((MAP_WIDTH, MAP_HEIGHT))
+        surf.fill((50, 100, 50))
+        bg_images.append(surf)
+        bg_names.append("default_color")
+        
+    current_bg_idx = 0
 
     # Load Building Images
     building_images = {}
@@ -69,16 +96,27 @@ def main():
     cam_x = 0
     cam_y = 0
 
-    # Buildings list: [{"x": x, "y": y}]
+    # Buildings list: [{"x": x, "y": y, "type": "..."}]
     buildings = []
+    
+    # Current level file
+    current_level_file = LEVELS_DIR / "level7_buildings.json"
 
     # Load existing
-    json_path = LEVELS_DIR / "level7_buildings.json"
-    if json_path.exists():
+    if current_level_file.exists():
         try:
-            with open(json_path, "r") as f:
-                buildings = json.load(f)
-            print(f"Loaded {len(buildings)} buildings.")
+            with open(current_level_file, "r") as f:
+                data = json.load(f)
+                # Handle old format (list of dicts) vs new format (dict with metadata)
+                if isinstance(data, list):
+                    buildings = data
+                elif isinstance(data, dict):
+                    buildings = data.get("buildings", [])
+                    bg_name = data.get("background", "main_background.png")
+                    # Try to find bg index
+                    if bg_name in bg_names:
+                        current_bg_idx = bg_names.index(bg_name)
+            print(f"Loaded {len(buildings)} buildings from {current_level_file.name}.")
         except Exception as e:
             print(f"Error loading JSON: {e}")
 
@@ -130,13 +168,39 @@ def main():
                         buildings.remove(to_remove)
 
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_s:
-                    # Save
+                # Background switching
+                if event.key == pygame.K_RIGHT:
+                    current_bg_idx = (current_bg_idx + 1) % len(bg_names)
+                elif event.key == pygame.K_LEFT:
+                    current_bg_idx = (current_bg_idx - 1) % len(bg_names)
+                
+                # Saving
+                elif event.key == pygame.K_s:
+                    mods = pygame.key.get_mods()
+                    if mods & pygame.KMOD_CTRL:
+                        # Save As New
+                        # Find next available level_X.json
+                        i = 1
+                        while True:
+                            new_path = LEVELS_DIR / f"level_{i}.json"
+                            if not new_path.exists():
+                                current_level_file = new_path
+                                break
+                            i += 1
+                        print(f"Saving to NEW file: {current_level_file.name}")
+                    
+                    # Save to current_level_file
                     if not LEVELS_DIR.exists():
                         LEVELS_DIR.mkdir(parents=True)
-                    with open(json_path, "w") as f:
-                        json.dump(buildings, f, indent=4)
-                    print("Saved buildings to JSON.")
+                        
+                    save_data = {
+                        "background": bg_names[current_bg_idx],
+                        "buildings": buildings
+                    }
+                    
+                    with open(current_level_file, "w") as f:
+                        json.dump(save_data, f, indent=4)
+                    print(f"Saved to {current_level_file.name}")
 
         # Camera Movement
         keys = pygame.key.get_pressed()
@@ -153,7 +217,10 @@ def main():
         screen.fill((0, 0, 0))
         
         # Draw BG
-        screen.blit(bg_img, (-cam_x, -cam_y))
+        if bg_images:
+            screen.blit(bg_images[current_bg_idx], (-cam_x, -cam_y))
+        else:
+            screen.fill((30, 30, 30))
 
         # Draw Buildings
         for b in buildings:

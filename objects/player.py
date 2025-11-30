@@ -115,14 +115,18 @@ class Player(GameObject):
 
         # --- Sound waves ---
         self.sound_waves: list[dict] = []
-        self.wave_speed = 7
-        self.max_wave_radius = 180
+        # Prędkość fali w shaderze to 0.5 px/ms = 500 px/s
+        self.wave_speed = 500.0
+        # Zasięg fali w shaderze to 1000ms * 0.5px/ms = 500px
+        self.max_wave_radius = 500.0
         self.wave_color = (0, 255, 255)
         self.on_beat_wave_color = (255, 0, 0)
         self.wave_thickness = 5
 
         # większy zasięg / grubość na beacie
-        self.on_beat_max_wave_radius = 250
+        # Skoro shader ma stały czas życia fali (1000ms), to wizualnie każda fala leci do 500px.
+        # Ustawiamy więc logiczny zasięg też na 500, żeby pasował do grafiki.
+        self.on_beat_max_wave_radius = 500.0
         self.on_beat_wave_thickness = 12
 
         self._mouse_was_pressed = False
@@ -328,6 +332,14 @@ class Player(GameObject):
                     self.is_attacking_anim = True
                     self.attack_anim_index = 0.0
 
+                    if not on_beat_now:
+                        if self.sound_fail:
+                            self.sound_fail.play()
+                        # Nie tworzymy fali, jeśli nie trafiono w beat
+                        self._next_attack_time_ms = now + self.attack_cooldown_ms
+                        self._mouse_was_pressed = True
+                        return
+
                     max_radius = (
                         self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
                     )
@@ -344,6 +356,7 @@ class Player(GameObject):
                         "thickness": thickness,
                         "damage": self.base_wave_damage + self.wave_damage_bonus,
                         "on_beat": on_beat_now,
+                        "hit_enemies": set(),  # Zbiór trafionych wrogów
                     }
                     self.sound_waves.append(wave)
 
@@ -375,8 +388,9 @@ class Player(GameObject):
             self._mouse_was_pressed = False
 
     def _update_waves(self) -> None:
+        dt = self.time_manager.dt
         for wave in self.sound_waves:
-            wave["radius"] += self.wave_speed
+            wave["radius"] += self.wave_speed * dt
         self.sound_waves = [
             w for w in self.sound_waves if w["radius"] <= w["max_radius"]
         ]

@@ -338,7 +338,7 @@ class _SimpleSmokeParticle:
         self.y += self.vy
         self.radius += self.grow
 
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: pygame.Surface, camera=None):
         if not self.alive:
             return
 
@@ -357,7 +357,10 @@ class _SimpleSmokeParticle:
                            (diameter // 2, diameter // 2),
                            int(self.radius))
 
-        surface.blit(temp, (int(self.x - self.radius), int(self.y - self.radius)))
+        cam_x = camera.x if camera else 0
+        cam_y = camera.y if camera else 0
+
+        surface.blit(temp, (int(self.x - self.radius - cam_x), int(self.y - self.radius - cam_y)))
 
 
 class SmokeTrail:
@@ -368,7 +371,7 @@ class SmokeTrail:
         explosion = SmokeTrail(border=1)
         explosion.add_particle(x, y, dx, dy)
         explosion.update()
-        explosion.draw(surface)
+        explosion.draw(surface, camera)
         len(explosion.particles)
     """
 
@@ -385,6 +388,6 @@ class SmokeTrail:
             p.update()
         self.particles = [p for p in self.particles if p.alive]
 
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: pygame.Surface, camera=None):
         for p in self.particles:
-            p.draw(surface)
+            p.draw(surface, camera)

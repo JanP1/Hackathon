@@ -148,6 +148,14 @@ class Game(BaseLevel):
         except Exception as e:
             print(f"[WARN] Game sound right.mp3 error: {e}")
 
+        # Dźwięk fail (do użycia przy prawym przycisku)
+        self.sound_fail = None
+        try:
+            self.sound_fail = pygame.mixer.Sound("assets/sounds/fail.mp3")
+            self.sound_fail.set_volume(0.5)
+        except Exception as e:
+            print(f"[WARN] Game sound fail.mp3 error: {e}")
+
     # ======================================================================
     # EVENTY SPECYFICZNE DLA LEVEL7
     # ======================================================================
@@ -167,6 +175,19 @@ class Game(BaseLevel):
     # ======================================================================
 
     def _shoot_special(self) -> None:
+        # Sprawdzenie beatu
+        is_on_beat = False
+        if self.bpm_counter:
+            is_on_beat = self.bpm_counter.is_on_beat()
+
+        if not is_on_beat:
+            if self.sound_fail:
+                self.sound_fail.play()
+            return
+
+        # Trafienie w beat -> PERFECT!
+        self.player.perfect_text_timer_ms = 600
+
         # pozycja gracza
         px, py = self.player.rect.center
 
@@ -238,6 +259,12 @@ class Game(BaseLevel):
 
         # --- Kurczenie wrogów trafionych specjalnym strzałem ---
         self._update_enemy_shrink(scaled_dt)
+        
+        # --- Kolizje fal z wrogami ---
+        self._handle_wave_enemy_collisions()
+
+        # --- Sprawdzanie śmierci wrogów (z dowolnego źródła) ---
+        self._check_enemy_deaths()
 
         # --- Kolizje z budynkami ---
         self._handle_building_collisions()
@@ -269,11 +296,26 @@ class Game(BaseLevel):
                     break
 
         for enemy in enemies_hit:
-            self._hit_enemy_with_special(enemy)
+            # Zadajemy obrażenia zamiast natychmiastowego zabicia
+            # Zakładamy max_health=60, więc 30 dmg = 2 strzały
+            enemy.take_damage(30)
 
-    def _hit_enemy_with_special(self, enemy) -> None:
+    def _check_enemy_deaths(self) -> None:
         """
-        Trafienie wroga specjalnym pociskiem:
+        Sprawdza, czy któryś wróg umarł (hp <= 0) i nie jest jeszcze w trakcie niszczenia.
+        Jeśli tak, odpala animację śmierci.
+        """
+        for enemy in self.enemies:
+            if getattr(enemy, "destroying", False):
+                continue
+            
+            # Jeśli wróg nie żyje (hp <= 0), zaczynamy animację
+            if not enemy.is_alive or enemy.current_health <= 0:
+                self._start_enemy_destruction(enemy)
+
+    def _start_enemy_destruction(self, enemy) -> None:
+        """
+        Rozpoczyna animację niszczenia wroga:
         - odpalamy na nim dym (SmokeTrail)
         - zaczynamy animację kurczenia do zera.
         """
@@ -293,6 +335,11 @@ class Game(BaseLevel):
             dy = random.uniform(-1.0, 1.0)
             explosion.add_particle(ex, ey, dx, dy)
         self.smoke_explosions.append(explosion)
+
+    def _hit_enemy_with_special(self, enemy) -> None:
+        # Ta metoda jest teraz zastąpiona przez _start_enemy_destruction
+        # wywoływaną w _check_enemy_deaths po zadaniu obrażeń.
+        pass
 
     def _update_enemy_shrink(self, scaled_dt: float) -> None:
         """
@@ -325,6 +372,41 @@ class Game(BaseLevel):
 
         if to_remove:
             self.enemies = [e for e in self.enemies if e not in to_remove]
+
+    def _handle_wave_enemy_collisions(self) -> None:
+        """
+        Sprawdza kolizje fal dźwiękowych gracza z wrogami.
+        Zadaje obrażenia, jeśli wróg jest w zasięgu fali.
+        """
+        for wave in self.player.sound_waves:
+            wave_radius = wave["radius"]
+            wave_thickness = wave["thickness"]
+            wave_pos = wave["pos"]
+            damage = wave["damage"]
+            hit_enemies = wave.setdefault("hit_enemies", set())
+            
+            wx, wy = wave_pos
+
+            for enemy in self.enemies:
+                if getattr(enemy, "destroying", False):
+                    continue
+                if enemy in hit_enemies:
+                    continue
+                
+                # Sprawdzamy dystans do środka wroga
+                ex, ey = enemy.rect.center
+                dist = math.hypot(ex - wx, ey - wy)
+                
+                # Kolizja: jeśli dystans jest mniejszy niż promień fali + margines (np. promień wroga)
+                # i większy niż promień wewnętrzny (żeby fala "przeszła" przez wroga tylko raz)
+                # Upraszczając: jeśli wróg jest w pierścieniu fali lub tuż przed nim
+                enemy_radius = 30 # przybliżony promień wroga
+                
+                if dist < wave_radius + enemy_radius and dist > wave_radius - wave_thickness - enemy_radius:
+                    # Wave niszczy przeciwnika od razu
+                    enemy.take_damage(enemy.max_health + 999)
+                    hit_enemies.add(enemy)
+                    # Opcjonalnie: efekt trafienia, odrzut itp.
 
     def _handle_building_collisions(self) -> None:
         """
@@ -420,7 +502,7 @@ class Game(BaseLevel):
 
         # dymy eksplozji na wrogach
         for trail in self.smoke_explosions:
-            trail.draw(self.screen)
+            trail.draw(self.screen, self.camera)
 
         # gracz
         self.player.draw(self.screen)

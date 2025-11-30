@@ -91,10 +91,13 @@ class Enemy(GameObject):
         return self.current_health / self.max_health
     
     
-    def update(self, delta_time: float = 0):
+    def update(self, delta_time: float = None):
         """Update enemy state."""
         if not self.is_alive:
             return
+        
+        if delta_time is None:
+            delta_time = self.time_manager.dt_ms
         
         # Update attack animation
         if self.is_attacking:

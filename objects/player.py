@@ -234,7 +234,7 @@ class Player(GameObject):
     def _try_start_dash(self) -> None:
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LSHIFT] and not self.is_dashing and self.is_alive:
-            now = pygame.time.get_ticks()
+            now = self.time_manager.time
             if now >= self._next_dash_time_ms:
                 if self.velocity.length_squared() > 0:
                     vec = self.velocity.normalize()
@@ -264,7 +264,7 @@ class Player(GameObject):
     def _update_dash(self) -> None:
         if not self.is_dashing:
             return
-        now = pygame.time.get_ticks()
+        now = self.time_manager.time
         elapsed = now - self.dash_start_time_ms
         if elapsed >= self.dash_duration_ms:
             self.is_dashing = False
@@ -288,7 +288,7 @@ class Player(GameObject):
         pressed = pygame.mouse.get_pressed(num_buttons=3)
         if pressed[0]:
             if not self._mouse_was_pressed:
-                now = pygame.time.get_ticks()
+                now = self.time_manager.time
                 if now >= self._next_attack_time_ms:
                     # sprawdzenie beatu
                     on_beat_now = False
@@ -372,11 +372,7 @@ class Player(GameObject):
             return
 
         # dt do liczenia timera PERFECT!
-        now_ticks = pygame.time.get_ticks()
-        delta_ms = now_ticks - self._last_update_ticks
-        if delta_ms < 0:
-            delta_ms = 0
-        self._last_update_ticks = now_ticks
+        delta_ms = self.time_manager.dt_ms
 
         if not self.is_dashing and not self.is_attacking_anim:
             self._handle_input()
@@ -408,7 +404,7 @@ class Player(GameObject):
             )
         elif self.is_dashing and self.is_alive:
             base_sprite = self.sprite if self.facing_right else self.sprite_flipped
-            now = pygame.time.get_ticks()
+            now = self.time_manager.time
             elapsed = now - self.dash_start_time_ms
             t = max(
                 0.0,

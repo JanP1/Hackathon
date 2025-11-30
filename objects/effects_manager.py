@@ -19,6 +19,9 @@ class EffectsManager:
         self.wave_thickness: float = 40.0
         self.wave_max_lifetime_ms: float = 1000.0  # Jak długo fala żyje
 
+        # Czas gry (skalowany) w ms
+        self.current_time: float = 0.0
+
         # Referencje do pocisków (np. PlayerBullet, EnemyProjectile)
         self.bullet_objects: List[Any] = []
 
@@ -34,7 +37,7 @@ class EffectsManager:
         Zapisuje pozycję i czas startu.
         """
         cx, cy = center_pos
-        start_time = pygame.time.get_ticks()
+        start_time = self.current_time
         self.waves_data.append((float(cx), float(cy), float(start_time), self.wave_thickness))
 
     def get_waves_data(self) -> List[Tuple[float, float, float, float]]:
@@ -129,12 +132,16 @@ class EffectsManager:
     # -------------------------------------------------
     # Update globalny
     # -------------------------------------------------
-    def update(self):
+    def update(self, scaled_dt: float = 0.0):
         """
         Aktualizuje stan efektów, np. usuwa stare fale.
         WOŁAĆ RAZ NA KLATKĘ!
+        scaled_dt: czas w sekundach (już przeskalowany przez time_scale)
         """
-        now = pygame.time.get_ticks()
+        # Aktualizujemy wewnętrzny licznik czasu (w ms)
+        self.current_time += scaled_dt * 1000.0
+        
+        now = self.current_time
         # Usuwamy fale, które żyją zbyt długo
         self.waves_data = [
             w for w in self.waves_data

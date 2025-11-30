@@ -15,6 +15,7 @@ from objects.bpm_counter import BPMCounter
 from objects.ranged_enemy import RangedEnemy
 from objects.camera import Camera
 from objects.beat_hit_popup import BeatHitPopup   # <-- NOWY IMPORT
+from objects.time_manager import TimeManager
 
 
 class BaseLevel(ABC):
@@ -50,7 +51,10 @@ class BaseLevel(ABC):
         # ------------------------------------------------------------------
         # TIME SCALE (bullet-time)
         # ------------------------------------------------------------------
+        self.time_manager = TimeManager.get_instance()
         self.time_scale: float = 1.0
+        self.time_manager.set_time_scale(self.time_scale)
+        
         self.min_time_scale: float = 0.1
         self.max_time_scale: float = 3.0
         self.time_scale_step: float = 0.1
@@ -233,6 +237,7 @@ class BaseLevel(ABC):
         if self.time_scale > self.max_time_scale:
             self.time_scale = self.max_time_scale
 
+        self.time_manager.set_time_scale(self.time_scale)
         print(f"[TIME] time_scale={self.time_scale:.2f}")
 
         if self.audio_manager is not None:
@@ -286,9 +291,10 @@ class BaseLevel(ABC):
         if dt < 0.0:
             dt = 0.0
 
-        scaled_dt = dt * self.time_scale
+        self.time_manager.update(dt)
+        scaled_dt = self.time_manager.dt
 
-        self.effects_manager.update()
+        self.effects_manager.update(scaled_dt)
         self._apply_time_scale_to_objects()
 
         if self.bpm_counter is not None:
@@ -305,7 +311,7 @@ class BaseLevel(ABC):
         if self.camera is not None:
             self.camera.update(self.player)
 
-        delta_ms = dt * 1000.0
+        delta_ms = scaled_dt * 1000.0
         for enemy in self.enemies:
             if getattr(enemy, "destroying", False):
                 continue

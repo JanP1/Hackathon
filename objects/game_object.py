@@ -1,5 +1,6 @@
 import pygame
 from abc import ABC, abstractmethod
+from objects.time_manager import TimeManager
 
 """
 Podstawowy game object po którym będzie dziedziczyło wszystko,
@@ -23,6 +24,7 @@ class GameObject(ABC):
         - jeśli ktoś przez przypadek podał name jako 5. argument (stare wywołania),
           próbujemy to wykryć i potraktować jako name, a scale ustawiamy na 1.0.
         """
+        self.time_manager = TimeManager.get_instance()
 
         # Mały hack kompatybilności:
         # Jeżeli wywołanie było GameObject(x, y, W, H, "player"),

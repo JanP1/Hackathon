@@ -320,8 +320,9 @@ class GLPostProcessor:
 
         glUseProgram(self.program)
 
-        # czas do animacji
-        t = pygame.time.get_ticks() / 1000.0
+        # czas do animacji - używamy current_time_ms przeliczonego na sekundy
+        # dzięki temu animacje (wiggle) też będą zwalniać przy time_scale
+        t = current_time_ms / 1000.0
         glUniform1f(self.u_time, t)
 
         # czas do obliczenia promienia fali

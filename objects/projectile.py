@@ -40,11 +40,14 @@ class Projectile(GameObject):
         self.radius = 5
         self.color = (255, 255, 0)  # Yellow
     
-    def update(self, delta_time: float = 0.0):
+    def update(self, delta_time: float = None):
         """
         Move the projectile.
         delta_time jest w sekundach.
         """
+        if delta_time is None:
+            delta_time = self.time_manager.dt
+
         self.rect.x += self.vx * delta_time #type: ignore
         self.rect.y += self.vy * delta_time #type: ignore
         

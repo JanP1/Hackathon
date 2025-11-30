@@ -403,7 +403,8 @@ if __name__ == "__main__":
         ]
 
         # Przekazujemy też aktualny czas do shadera, aby mógł animować fale
-        current_time_ms = pygame.time.get_ticks()
+        # Używamy czasu z effects_manager, który uwzględnia time_scale
+        current_time_ms = game.effects_manager.current_time
 
         gl_post.render(game_surface, bullets_data_screen, waves_data_screen, current_time_ms)
 

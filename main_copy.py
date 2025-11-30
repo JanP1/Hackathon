@@ -1,5 +1,7 @@
 import pygame
 import sys
+import ctypes
+ctypes.windll.user32.SetProcessDPIAware()
 
 #=========== SCENES IMPORTS ============
 from scenes.start import Start

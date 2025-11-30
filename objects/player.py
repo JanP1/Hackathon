@@ -49,7 +49,7 @@ class Player(GameObject):
 
         
         # Health system ---------------------------------------------
-        self.max_health = 100
+        self.max_health = 25
         self.current_health = self.max_health
         # -----------------------------------------------------------
 
@@ -105,7 +105,7 @@ class Player(GameObject):
         # Dash parameters -------------------------------------------
 
         self.is_dashing = False
-        self.dash_cooldown_ms = 3000  # 3 seconds cooldown per spec
+        self.dash_cooldown_ms = 1200  # 3 seconds cooldown per spec
         self._next_dash_time_ms = 0
         self.dash_duration_ms = 220  # total dash time
         self.dash_speed = 40  # pixels per frame while dashing
@@ -394,10 +394,10 @@ class Player(GameObject):
         pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
 
         # Draw health bar
-        self._draw_attack_cooldown_bar(screen)
+        self._draw_health_bar(screen)
 
-    def _draw_attack_cooldown_bar(self, screen):
-        """Rysuje pasek życia gracza (zamiast paska cooldownu)."""
+    def _draw_health_bar(self, screen):
+        """Rysuje pasek życia gracza."""
         # Wymiary i pozycja paska (centrowany przy dolnej krawędzi)
         bar_width = self.SCREEN_W / 3
         bar_height = 30
@@ -405,8 +405,7 @@ class Player(GameObject):
         x = int(self.SCREEN_W / 2 - bar_width / 2)
         y = int(self.SCREEN_H - bar_y_offset)
 
-        # Tło paska (czerwone tło zdrowia)
-        pygame.draw.rect(screen, (120, 20, 20), (x, y, int(bar_width), bar_height))
+        # Brak tła – przezroczyste tło tam, gdzie nie ma wypełnienia.
 
         # Procent zdrowia
         if self.max_health > 0:
@@ -414,13 +413,31 @@ class Player(GameObject):
         else:
             progress = 0.0
 
-        # Wypełnienie paska (zielone zdrowie)
+        # Kolor paska: zielony >= 50%, czerwony < 50%
+        fill_color = (0, 200, 0) if progress >= 0.5 else (200, 40, 40)
+        print(progress)
+
+        # Wypełnienie paska
         fill_width = int(bar_width * progress)
         if fill_width > 0:
-            pygame.draw.rect(screen, (0, 200, 0), (x, y, fill_width, bar_height))
+            # Zaokrąglone rogi – promień dopasowany do aktualnej szerokości, by uniknąć artefaktów
+            base_radius = int(bar_height / 2)
+            radius = max(0, min(base_radius, fill_width // 2))
+            pygame.draw.rect(
+                screen,
+                fill_color,
+                pygame.Rect(x, y, fill_width, bar_height),
+                border_radius=radius,
+            )
 
-        # Obramowanie paska
-        pygame.draw.rect(screen, (255, 255, 255), (x, y, int(bar_width), bar_height), 2)
+        # Obramowanie paska (z zaokrąglonymi rogami, czarna ramka)
+        pygame.draw.rect(
+            screen,
+            (0, 0, 0),
+            pygame.Rect(x, y, int(bar_width), bar_height),
+            width=2,
+            border_radius=int(bar_height / 2),
+        )
 
     # ==== Health API ====
     def take_damage(self, amount: int):

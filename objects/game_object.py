@@ -69,6 +69,9 @@ class GameObject(ABC):
         self.facing_right = True
         self.is_active = False
 
+        # Referencja do kamery (wstrzykiwana z zewnątrz)
+        self.camera = None
+
     # ======================================================================
     # Inicjalizacja zasobów
     # ======================================================================
@@ -119,8 +122,15 @@ class GameObject(ABC):
     # ======================================================================
 
     def draw(self, screen: pygame.Surface) -> None:
+        # Pobierz przesunięcie kamery, jeśli istnieje
+        cam_x, cam_y = 0, 0
+        if self.camera is not None:
+            cam_x = self.camera.x
+            cam_y = self.camera.y
+
+        # Rysuj sprite z uwzględnieniem kamery
         current_sprite = self.sprite if self.facing_right else self.sprite_flipped
-        screen.blit(current_sprite, self.rect)
+        screen.blit(current_sprite, (self.rect.x - cam_x, self.rect.y - cam_y))
 
     # ======================================================================
     # Update – abstrakcyjny

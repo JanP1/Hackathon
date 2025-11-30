@@ -312,10 +312,7 @@ class BaseLevel(ABC):
             if hasattr(enemy, "update"):
                 enemy.update(delta_ms)
             if isinstance(enemy, RangedEnemy):
-                enemy.set_target(
-                    self.player.rect.centerx,
-                    self.player.rect.centery,
-                )
+                enemy.set_target()
 
         # Beat logic (wspólny) – jeden trigger na beat
         if self.bpm_counter is not None and self.bpm_counter.is_on_beat():
@@ -414,4 +411,8 @@ class BaseLevel(ABC):
             enemy.set_time_scale(self.time_scale)
         if hasattr(enemy, "set_effects_manager"):
             enemy.set_effects_manager(self.effects_manager)
+        # NOWE: Przekazujemy referencję do kamery, żeby wróg (i jego pociski)
+        # wiedział, gdzie się rysować.
+        if self.camera is not None:
+            enemy.camera = self.camera
         self.enemies.append(enemy)

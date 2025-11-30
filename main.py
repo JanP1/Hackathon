@@ -41,6 +41,9 @@ class Game:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit()
             self.states[self.game_state_manager.get_state()].run()
             pygame.display.update()
             self.clock.tick(FPS)

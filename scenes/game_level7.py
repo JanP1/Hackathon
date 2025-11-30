@@ -88,12 +88,18 @@ class Game(BaseLevel):
         # ------------------------
         # TŁO – obraz zamiast jednolitego koloru
         # ------------------------
+        # UWAGA: Zakładamy, że obraz tła ma rozmiar mapy, np. 4096x4096
+        map_width, map_height = 4096, 4096
+
         self.background_image: pygame.Surface | None = None
         try:
             img = pygame.image.load(str(MAIN_BG_PATH)).convert()
             self.background_image = pygame.transform.scale(
-                img, (SCREEN_WIDTH, SCREEN_HEIGHT)
+                img, (map_width, map_height)
             )
+            # Ustawiamy rozmiar mapy w BaseLevel, żeby kamera wiedziała, jak się poruszać
+            self.set_map_size(map_width, map_height)
+
             print(f"[BG] Załadowano tło: {MAIN_BG_PATH}")
         except Exception as e:
             print(f"[BG][WARN] Nie udało się załadować {MAIN_BG_PATH}: {e}")
@@ -144,10 +150,14 @@ class Game(BaseLevel):
         # pozycja gracza
         px, py = self.player.rect.center
 
-        # kierunek = celowanie w pozycję myszy
+        # kierunek = celowanie w pozycję myszy (uwzględniając kamerę)
         mx, my = pygame.mouse.get_pos()
-        dx = mx - px
-        dy = my - py
+        # Przeliczamy pozycję myszy na współrzędne świata
+        world_mx = mx + self.camera.x
+        world_my = my + self.camera.y
+
+        dx = world_mx - px
+        dy = world_my - py
         length = math.hypot(dx, dy)
         if length == 0:
             return
@@ -301,7 +311,10 @@ class Game(BaseLevel):
         """
         # tło: najpierw obrazek, jak nie ma to kolor
         if self.background_image is not None:
-            self.screen.blit(self.background_image, (0, 0))
+            # Rysujemy tło z przesunięciem kamery
+            cam_x = self.camera.x if self.camera else 0
+            cam_y = self.camera.y if self.camera else 0
+            self.screen.blit(self.background_image, (-cam_x, -cam_y))
         else:
             self.screen.fill(self.bg_color)
 
@@ -369,14 +382,28 @@ if __name__ == "__main__":
         # logika + rysowanie NA game_surface (CPU)
         game.run_frame(dt, events)
 
-        # Dane dla shadera bierzemy teraz wyłącznie z EffectsManagera
+        # Dane dla shadera bierzemy z EffectsManagera, ale musimy je
+        # przesunąć o pozycję kamery, żeby zgadzały się z tym, co widać na ekranie.
+        cam_x = game.camera.x if game.camera else 0
+        cam_y = game.camera.y if game.camera else 0
+
+        # Przesuwamy pociski
         bullets_data = game.effects_manager.get_bullets_data()
+        bullets_data_screen = [
+            (x - cam_x, y - cam_y, vx, vy) for x, y, vx, vy in bullets_data
+        ]
+
+        # Przesuwamy fale
         waves_data = game.effects_manager.get_waves_data()
+        waves_data_screen = [
+            (cx - cam_x, cy - cam_y, start_time, thickness)
+            for cx, cy, start_time, thickness in waves_data
+        ]
 
         # Przekazujemy też aktualny czas do shadera, aby mógł animować fale
         current_time_ms = pygame.time.get_ticks()
 
-        gl_post.render(game_surface, bullets_data, waves_data, current_time_ms)
+        gl_post.render(game_surface, bullets_data_screen, waves_data_screen, current_time_ms)
 
         pygame.display.flip()
 

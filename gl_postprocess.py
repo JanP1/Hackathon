@@ -47,6 +47,10 @@ uniform float u_triStrength;
 // parametry fal
 uniform float u_waveStrength;
 
+// tint (0..1) – ile czerwieni w obszarze efektu
+uniform float u_triTint;
+uniform float u_waveTint;
+
 varying vec2 v_tex;
 
 void main() {
@@ -55,6 +59,9 @@ void main() {
     vec2 fragCoord = uv * u_resolution;
 
     vec2 displaced = fragCoord;
+
+    // zbieramy, ile czerwonego tintu powinniśmy nałożyć (0..1)
+    float tintFactor = 0.0;
 
     // -------------------------------
     // TRÓJKĄTY ZA POCISKAMI
@@ -78,15 +85,23 @@ void main() {
             continue;
         }
 
+        // normalizacja po długości 0..1
         float norm_d = d / u_triLength;
+
+        // falowanie na boki (wzdłuż prostopadłej)
         float wave = sin(d * 0.08 - u_time * 6.0);
         float sideOffset = wave * u_triStrength * (1.0 - norm_d) * u_triHalfWidth * 0.5;
         float compress = 1.0 - u_triStrength * 0.35 * (1.0 - norm_d);
         float new_d = d * compress;
         float new_s = s + sideOffset;
 
+        // przelicz z powrotem na xy
         vec2 srcRel = dir * new_d + perp * new_s;
         displaced = tip + srcRel;
+
+        // im bliżej wierzchołka pocisku (norm_d blisko 0), tym mocniej świeci
+        float localTint = (1.0 - norm_d) * u_triTint;
+        tintFactor = max(tintFactor, localTint);
     }
 
     // -------------------------------
@@ -125,12 +140,22 @@ void main() {
         float scale = new_r / dist;
         rel *= scale;
         displaced = center + rel;
+
+        // maksymalny tint w środku grubości pierścienia
+        float localTint = u_waveTint * falloff;
+        tintFactor = max(tintFactor, localTint);
     }
 
     vec2 finalUV = displaced / u_resolution;
     finalUV = clamp(finalUV, vec2(0.0, 0.0), vec2(1.0, 1.0));
 
-    gl_FragColor = texture2D(u_scene, finalUV);
+    vec4 col = texture2D(u_scene, finalUV);
+
+    // delikatna, półprzezroczysta czerwień
+    vec3 redColor = vec3(1.0, 0.15, 0.15);
+    col.rgb = mix(col.rgb, redColor, clamp(tintFactor, 0.0, 1.0));
+
+    gl_FragColor = col;
 }
 """
 
@@ -174,12 +199,20 @@ class GLPostProcessor:
 
         self.u_waveStrength = glGetUniformLocation(self.program, "u_waveStrength")
 
+        # nowe uniformy do czerwonego tintu
+        self.u_triTint = glGetUniformLocation(self.program, "u_triTint")
+        self.u_waveTint = glGetUniformLocation(self.program, "u_waveTint")
+
         # wartości domyślne parametrów
         glUniform2f(self.u_resolution, float(self.width), float(self.height))
         glUniform1f(self.u_triLength, 220.0)
         glUniform1f(self.u_triHalfWidth, 70.0)
         glUniform1f(self.u_triStrength, 0.30)
         glUniform1f(self.u_waveStrength, 0.25)
+
+        # domyślna siła czerwonego tintu (0..1)
+        glUniform1f(self.u_triTint, 0.1)
+        glUniform1f(self.u_waveTint, 0.1)
 
         # sampler
         glUniform1i(self.u_scene, 0)  # tekstura na jednostce 0

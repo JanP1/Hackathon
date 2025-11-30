@@ -13,6 +13,7 @@ from objects.effects_manager import EffectsManager
 from objects.player import Player
 from objects.bpm_counter import BPMCounter
 from objects.ranged_enemy import RangedEnemy
+from objects.camera import Camera  # <-- DODANE: kamera
 
 
 class BaseLevel(ABC):
@@ -31,13 +32,10 @@ class BaseLevel(ABC):
         * wstrzyknięty effects_manager (fale),
         * wstrzyknięty time_scale,
     - lista wrogów + wspólna obsługa on_beat(),
-    - debug HUD (nazwa poziomu, FPS, time_scale, speed).
-
-    PRZEBIEG FRAME:
-    run_frame(dt, events) ->
-        handle_events(events)  # ESC, scroll, zdarzenia poziomu
-        update(dt)             # time_scale, audio, BPM, player, enemies, update_level()
-        draw()                 # draw_level() + BPM + HUD
+    - debug HUD (nazwa poziomu, FPS, time_scale, speed),
+    - KAMERA:
+        * domyślnie mapa = rozmiar ekranu,
+        * level może nadpisać rozmiar mapy przez set_map_size().
     """
 
     def __init__(
@@ -114,6 +112,19 @@ class BaseLevel(ABC):
         if hasattr(self.player, "set_time_scale"):
             self.player.set_time_scale(self.time_scale)
 
+        # ------------------------------------------------------------------
+        # CAMERA – domyślnie mapa = rozmiar ekranu, level może to nadpisać
+        # ------------------------------------------------------------------
+        self.camera: Optional[Camera] = Camera(
+            self.WIDTH,      # map_width (na start = ekran)
+            self.HEIGHT,     # map_height (na start = ekran)
+            self.WIDTH,      # screen_width
+            self.HEIGHT,     # screen_height
+            box_w=int(self.WIDTH * 0.8),
+            box_h=int(self.HEIGHT * 0.8),
+        )
+        # podpinamy kamerę do playera, żeby mógł używać offsetu
+        self.player.camera = self.camera  # type: ignore
 
         # ------------------------------------------------------------------
         # BPMCounter
@@ -159,6 +170,46 @@ class BaseLevel(ABC):
     def stop_audio(self) -> None:
         if self.audio_manager is not None:
             self.audio_manager.stop()
+
+    # ======================================================================
+    # KAMERA – API dla leveli
+    # ======================================================================
+
+    def set_map_size(self, map_width: int, map_height: int) -> None:
+        if map_width <= 0 or map_height <= 0:
+            return
+
+        if self.camera is None:
+            self.camera = Camera(
+                map_width,
+                map_height,
+                self.WIDTH,
+                self.HEIGHT,
+                box_w=int(self.WIDTH * 0.8),
+                box_h=int(self.HEIGHT * 0.8),
+            )
+        else:
+            self.camera.map_width = map_width
+            self.camera.map_height = map_height
+
+        # player ma tę samą mapę
+        if hasattr(self.player, "set_map_size"):
+            self.player.set_map_size(map_width, map_height)
+
+        # podpinamy kamerę do playera
+        self.player.camera = self.camera  # type: ignore
+
+        # NOWE: podpinamy kamerę też do EffectsManagera
+        if hasattr(self.effects_manager, "set_camera"):
+            self.effects_manager.set_camera(self.camera)
+
+    def get_camera(self) -> Optional[Camera]:
+        """
+        Zwraca obiekt kamery – level może użyć go np. do:
+        - rysowania tła z offsetem (-camera.x, -camera.y),
+        - rysowania obiektów w koordynatach świata z camera.apply(rect).
+        """
+        return self.camera
 
     # ======================================================================
     # EVENTY
@@ -246,6 +297,10 @@ class BaseLevel(ABC):
 
         # Player – ruch, umiejętności itd.
         self.player.update()
+
+        # KAMERA – śledzi gracza po mapie
+        if self.camera is not None:
+            self.camera.update(self.player)
 
         # Enemies:
         # - update na milisekundach (jak w level7),

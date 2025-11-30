@@ -22,15 +22,26 @@ class Player(GameObject):
         - integracja z BPM przez wstrzykiwaną funkcję is_on_beat(),
         - przygotowana pod bullet-time (time_scale),
         - integracja z EffectsManager (add_wave przy spawn fali),
-        - animacja chodzenia z sekwencji PNG (jedna lista klatek, flip w draw).
+        - animacja chodzenia z sekwencji PNG (jedna lista klatek, flip w draw),
+        - ruch w koordynatach MAPY (map_width/map_height) + kamera (camera.x/y).
         """
         super().__init__(x_pos, y_pos, screen_w, screen_h, scale, name)
 
         self.is_alive = True
 
-        # ==================================================================
-        # Walk animation – JEDNA lista klatek (prawo), flip używa GameObject
-        # ==================================================================
+        # ==============================================================
+        # Mapa i kamera
+        # ==============================================================
+        # Domyślnie mapa ma rozmiar ekranu – level może to nadpisać.
+        self.map_width = screen_w
+        self.map_height = screen_h
+
+        # Kamera będzie wstrzyknięta z zewnątrz (BaseLevel.set_map_size i/lub __init__)
+        self.camera = None  # type: ignore
+
+        # ==============================================================
+        # Walk animation – JEDNA lista klatek, flip w draw
+        # ==============================================================
         self.anim_frames: list[pygame.Surface] = []
 
         for i in range(25):
@@ -122,7 +133,7 @@ class Player(GameObject):
         self.rect.centery = y_pos
 
     # ======================================================================
-    # Integracja z systemem czasu i efektami
+    # API mapy i czasu
     # ======================================================================
 
     def set_time_scale(self, time_scale: float) -> None:
@@ -130,6 +141,16 @@ class Player(GameObject):
 
     def set_effects_manager(self, manager) -> None:
         self.effects_manager = manager
+
+    def set_map_size(self, map_width: int, map_height: int) -> None:
+        """
+        Wołane z BaseLevel.set_map_size – ustala rozmiar mapy, po której
+        może się poruszać gracz (clamping).
+        """
+        if map_width > 0:
+            self.map_width = int(map_width)
+        if map_height > 0:
+            self.map_height = int(map_height)
 
     # ======================================================================
     # Input / movement
@@ -158,25 +179,26 @@ class Player(GameObject):
             if abs(self.velocity.length()) < self.speed / 5:
                 self.velocity = pygame.math.Vector2(0, 0)
 
-        # Apply movement and clamp to screen
-        self.rect.x = int(max(0, min(self.SCREEN_W - self.rect.width, self.rect.x + self.velocity.x)))
-        self.rect.y = int(max(0, min(self.SCREEN_H - self.rect.height, self.rect.y + self.velocity.y)))
+        # RUCH W KOORDYNATACH MAPY (NIE ekranu!)
+        self.rect.x = int(
+            max(0, min(self.map_width - self.rect.width, self.rect.x + self.velocity.x))
+        )
+        self.rect.y = int(
+            max(0, min(self.map_height - self.rect.height, self.rect.y + self.velocity.y))
+        )
 
         # ==================================================================
         # Walk animation – update na podstawie velocity
-        # Uwaga: flip NIE tu, tylko w GameObject.draw (facing_right)
         # ==================================================================
         if self.anim_frames:
             if self.velocity.length_squared() > 0:
-                # Im większa wartość, tym szybsza animacja
                 self.anim_index = (self.anim_index + 0.25) % len(self.anim_frames)
                 current = self.anim_frames[int(self.anim_index)]
             else:
-                # Stoi – klatka "idle" = pierwsza
                 current = self.anim_frames[0]
 
             self.sprite = current
-            # sprite_flipped trzymaj w sync, ale nie używaj go do logiki kierunku
+            # flip tylko graficznie – kierunek trzymamy w self.facing_right
             self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
 
     def _handle_look_direction(self) -> None:
@@ -186,8 +208,15 @@ class Player(GameObject):
                 self.facing_right = self.dash_dir.x >= 0
             return
 
-        # W przeciwnym razie patrz na kursor (lewo/prawo)
+        # W przeciwnym razie patrz na kursor w KOORDYNATACH ŚWIATA
         mx, my = pygame.mouse.get_pos()
+        cam_x = 0
+        if self.camera is not None:
+            cam_x = self.camera.x
+            my += self.camera.y
+            mx += self.camera.x
+
+        # self.rect.centerx jest w koordach świata
         self.facing_right = mx >= self.rect.centerx
 
     # ======================================================================
@@ -206,6 +235,11 @@ class Player(GameObject):
                 else:
                     cx, cy = self.rect.centerx, self.rect.centery
                     mx, my = pygame.mouse.get_pos()
+
+                    if self.camera is not None:
+                        mx += self.camera.x
+                        my += self.camera.y
+
                     dx = mx - cx
                     dy = my - cy
                     vec = pygame.math.Vector2(dx, dy)
@@ -231,13 +265,13 @@ class Player(GameObject):
             self.is_dashing = False
             return
 
-        # Move along dash direction
+        # Move along dash direction (w koordach mapy)
         self.rect.x = int(self.rect.x + self.dash_dir.x * self.dash_speed)
         self.rect.y = int(self.rect.y + self.dash_dir.y * self.dash_speed)
 
-        # Clamp to screen bounds
-        self.rect.x = max(0, min(self.SCREEN_W - self.rect.width, self.rect.x))
-        self.rect.y = max(0, min(self.SCREEN_H - self.rect.height, self.rect.y))
+        # Clamp do rozmiaru mapy
+        self.rect.x = max(0, min(self.map_width - self.rect.width, self.rect.x))
+        self.rect.y = max(0, min(self.map_height - self.rect.height, self.rect.y))
 
     # ======================================================================
     # Waves / atak
@@ -264,12 +298,16 @@ class Player(GameObject):
                         except Exception:
                             on_beat_now = False
 
-                    max_radius = self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
-                    thickness = self.on_beat_wave_thickness if on_beat_now else self.wave_thickness
+                    max_radius = (
+                        self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
+                    )
+                    thickness = (
+                        self.on_beat_wave_thickness if on_beat_now else self.wave_thickness
+                    )
                     color = self.wave_color
 
                     wave = {
-                        "pos": (self.rect.centerx, self.rect.centery),
+                        "pos": (self.rect.centerx, self.rect.centery),  # koordy świata
                         "radius": 0.0,
                         "max_radius": max_radius,
                         "color": color,
@@ -279,7 +317,9 @@ class Player(GameObject):
                     }
                     self.sound_waves.append(wave)
 
-                    if self.effects_manager is not None and hasattr(self.effects_manager, "add_wave"):
+                    if self.effects_manager is not None and hasattr(
+                        self.effects_manager, "add_wave"
+                    ):
                         try:
                             self.effects_manager.add_wave(wave["pos"])
                         except TypeError:
@@ -298,7 +338,9 @@ class Player(GameObject):
     def _update_waves(self) -> None:
         for wave in self.sound_waves:
             wave["radius"] += self.wave_speed
-        self.sound_waves = [w for w in self.sound_waves if w["radius"] <= w["max_radius"]]
+        self.sound_waves = [
+            w for w in self.sound_waves if w["radius"] <= w["max_radius"]
+        ]
 
     def on_beat(self) -> None:
         if not self.is_alive:
@@ -322,40 +364,62 @@ class Player(GameObject):
         self._update_waves()
 
     def draw(self, screen: pygame.Surface) -> None:
-        # Dashing – specjalne rysowanie z rotacją
+        # offset kamery
+        cam_x, cam_y = 0, 0
+        if self.camera is not None:
+            cam_x, cam_y = self.camera.x, self.camera.y
+
         if self.is_dashing and self.is_alive:
             base_sprite = self.sprite if self.facing_right else self.sprite_flipped
             now = pygame.time.get_ticks()
             elapsed = now - self.dash_start_time_ms
-            t = max(0.0, min(1.0, elapsed / (self.dash_duration_ms if self.dash_duration_ms > 0 else 1)))
+            t = max(
+                0.0,
+                min(1.0, elapsed / (self.dash_duration_ms if self.dash_duration_ms > 0 else 1)),
+            )
             angle = 360 * t if self.facing_right else -360 * t
             spun = pygame.transform.rotozoom(base_sprite, -angle, self.dash_scale)
-            spun_rect = spun.get_rect(center=self.rect.center)
+            spun_rect = spun.get_rect(
+                center=(self.rect.centerx - cam_x, self.rect.centery - cam_y)
+            )
             screen.blit(spun, spun_rect)
         else:
-            # tu używamy GameObject.draw -> on decyduje: sprite vs sprite_flipped
-            super().draw(screen)
+            # sprite z flipem, ale pozycja z odejmowaniem kamery
+            current_sprite = self.sprite if self.facing_right else self.sprite_flipped
+            screen.blit(
+                current_sprite,
+                (self.rect.x - cam_x, self.rect.y - cam_y),
+            )
 
-        # Fale dźwiękowe
+        # Fale dźwiękowe – koordy świata -> ekran = -cam
         for wave in self.sound_waves:
             if wave["radius"] > 0:
+                wx, wy = wave["pos"]
                 pygame.draw.circle(
                     screen,
                     wave.get("color", self.wave_color),
-                    wave["pos"],
+                    (int(wx - cam_x), int(wy - cam_y)),
                     int(wave["radius"]),
                     wave.get("thickness", self.wave_thickness),
                 )
 
-        # Dot w stronę myszy
+        # Dot w stronę myszy (w świecie, rysowany z kamerą)
         mx, my = pygame.mouse.get_pos()
+        cam_x, cam_y = 0, 0
+        if self.camera is not None:
+            cam_x, cam_y = self.camera.x, self.camera.y
+
+        # kursor -> koordy świata
+        world_mx = mx + cam_x
+        world_my = my + cam_y
+
         cx, cy = self.rect.centerx, self.rect.centery
-        vx = mx - cx
-        vy = my - cy
+        vx = world_mx - cx
+        vy = world_my - cy
         dist_sq = vx * vx + vy * vy
 
         if dist_sq == 0:
-            dot_x, dot_y = cx, cy
+            dot_x, dot_y = cx - cam_x, cy - cam_y
         else:
             max_d = self.look_max_distance
             max_d_sq = max_d * max_d
@@ -363,12 +427,12 @@ class Player(GameObject):
                 d = math.sqrt(dist_sq)
                 vx *= max_d / d
                 vy *= max_d / d
-            dot_x = int(cx + vx)
-            dot_y = int(cy + vy)
+            dot_x = int(cx + vx - cam_x)
+            dot_y = int(cy + vy - cam_y)
 
         pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
 
-        # Pasek życia
+        # Pasek życia (UI na ekranie – bez kamery)
         self._draw_health_bar(screen)
 
     # ======================================================================
@@ -391,7 +455,9 @@ class Player(GameObject):
         if fill_width > 0:
             pygame.draw.rect(screen, (255, 0, 0), (x, y, fill_width, bar_height))
 
-        pygame.draw.rect(screen, (255, 255, 255), (x, y, int(bar_width), bar_height), 2)
+        pygame.draw.rect(
+            screen, (255, 255, 255), (x, y, int(bar_width), bar_height), 2
+        )
 
     def take_damage(self, amount: int) -> None:
         if not self.is_alive:
@@ -419,4 +485,8 @@ class Player(GameObject):
         self.current_health = min(self.max_health, self.current_health + val)
 
     def get_health_percentage(self) -> float:
-        return 0.0 if self.max_health <= 0 else max(0.0, min(1.0, self.current_health / self.max_health))
+        return (
+            0.0
+            if self.max_health <= 0
+            else max(0.0, min(1.0, self.current_health / self.max_health))
+        )

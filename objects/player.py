@@ -1,6 +1,7 @@
 import pygame
 import math
 from objects.game_object import GameObject
+import os
 
 
 class Player(GameObject):
@@ -60,6 +61,22 @@ class Player(GameObject):
 
         # Max distance for look indicator (cursor dot) from player center
         self.look_max_distance = 250
+
+        # Ikona kursora (nutka) zamiast białego okręgu
+        self.note_img = None
+        try:
+            note_path = os.path.join("assets", "pictures", "note.png")
+            img = pygame.image.load(note_path).convert_alpha()
+            # Opcjonalne, lekkie skalowanie jeżeli grafika jest zbyt duża
+            # Zachowaj oryginalny rozmiar, ale jeżeli szerokość > 64, zmniejsz do 48px (proporcjonalnie)
+            if img.get_width() > 64:
+                scale = 48 / img.get_width()
+                new_size = (int(img.get_width() * scale), int(img.get_height() * scale))
+                img = pygame.transform.smoothscale(img, new_size)
+            self.note_img = img
+        except Exception:
+            # Jeśli wczytanie się nie powiedzie, pozostanie rysowanie okręgu jako awaryjne rozwiązanie
+            self.note_img = None
 
         # Ensure rect is positioned correctly relative to provided x,y as center
         # Incoming x_pos, y_pos are treated as center for convenience
@@ -271,7 +288,13 @@ class Player(GameObject):
                 vy *= max_d / d
             dot_x = int(cx + vx)
             dot_y = int(cy + vy)
-        pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
+        # Zamiast okręgu rysujemy nutkę z pliku note.png (wycentrowaną na pozycji dot_x, dot_y)
+        if self.note_img is not None:
+            note_rect = self.note_img.get_rect(center=(dot_x, dot_y))
+            screen.blit(self.note_img, note_rect)
+        else:
+            # Fallback, gdyby obrazek nie był dostępny
+            pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
 
         # UI: pasek życia w dolnej części ekranu
         self._draw_attack_cooldown_bar(screen)

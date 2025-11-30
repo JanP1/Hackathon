@@ -1,5 +1,7 @@
 import pygame
 import math
+
+from pygame.math import Vector2
 from objects.game_object import GameObject
 
 
@@ -13,59 +15,64 @@ class Player(GameObject):
         self.is_alive = True
 
 
-        # -------------------------- Experimental
+        # Walk animtaion --------------------------------------------
 
         self.walk_anim_speed = 0.25    # smaller = slower walking animation
-        self.attack_anim_speed = 2   # smaller = slower attack animation
-
-        # Add at the end of Player.__init__, after camera & sprite_flipped
-        # Load animation frames for right and left facing
         self.anim_frames_right = []
         self.anim_frames_left = []
-        for i in range(25):
-            img = pygame.image.load(
-                f"assets/pictures/walk_animation/mariachi_walk{i:04}.png"
-            ).convert_alpha()
-            self.anim_frames_right.append(img)
-            self.anim_frames_left.append(pygame.transform.flip(img, True, False))
         self.anim_index = 0
 
-        # Guitar hit (wave attack) animation
-        self.wave_anim_frames = []
-        for i in range(13):  # assuming 13 frames 0000 → 0012
-            img = pygame.image.load(
-                f"assets/pictures/guitar_hit_animation/mariachi_guitar_hit{i:04}.png"
-            ).convert_alpha()
-            self.wave_anim_frames.append(img)
+        self.generate_walk_animation_frames()
+        # -----------------------------------------------------------
 
+        # Attack animation ------------------------------------------
+        
+        # Starting values ----------
+        self.is_attacking = False
+        self.attack_anim_index = 0
+        # --------------------------
+
+        self.attack_anim_speed = 2   # smaller = slower attack animation
+        self.wave_anim_frames = []
         self.wave_anim_index = 0
         self.active_wave_animations = []  # list of dicts: {"pos": (x,y), "index": float}
-        
-# At the end of Player.__init__
-        self.facing_right = True
-        # self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
-        self.camera = None  # Will be injected if using a camera
-        # ---------------------------------------
 
-        # Health system
+        self.generate_attack_animation_frames()
+        # -----------------------------------------------------------
+
+        self.facing_right = True
+
+
+        # Camera for offset -----------------------------------------
+        self.camera = None  # Will be injected if using a camera
+        # -----------------------------------------------------------
+
+        
+        # Health system ---------------------------------------------
         self.max_health = 100
         self.current_health = self.max_health
+        # -----------------------------------------------------------
 
         
-        # Map size
+        # Map size --------------------------------------------------
         self.map_width = map_width
         self.map_height = map_height
+        # -----------------------------------------------------------
 
-        # Movement parameters
+
+        # Movement parameters ---------------------------------------
         self.speed = 15
         self.friction = 0.6
         self.velocity = pygame.math.Vector2(0, 0)
+        # -----------------------------------------------------------
 
-        # Sound wave visuals generated on mouse click
+        # Sound wave visuals generated on mouse click ---------------
+
         self.sound_waves = []  # list of dicts: {pos: (x,y), radius: float, max_radius: int}
         self.wave_speed = 7
         self.max_wave_radius = 180
         self.wave_color = (0, 255, 255)
+
         # Kolor fali, gdy kliknięcie nastąpi "on beat" (wymóg: czerwona)
         self.on_beat_wave_color = (255, 0, 0)
         self.wave_thickness = 5
@@ -79,19 +86,24 @@ class Player(GameObject):
         self.attack_cooldown_ms = 700
         self._next_attack_time_ms = 0
 
-        # Beat / damage system (mirrors Enemy logic where applicable)
-        self.beat_counter = 0
-        # Base damage of a sound wave and a cumulative bonus increased on beat-clicks
         self.base_wave_damage = 10
         self.wave_damage_bonus = 0
+        # -----------------------------------------------------------
+
+
+        # Beat ------------------------------------------------------
+        self.beat_counter = 0
 
         # Flaga była używana do pokolorowania następnej fali; nieużywana przy natychmiastowym sprawdzaniu
         self._on_beat_click_pending = False
 
         # Funkcja sprawdzająca czy w tej klatce jest beat (wstrzykiwana z zewnątrz)
         self._on_beat_checker = None
+        # -----------------------------------------------------------
 
-        # Dash parameters
+
+        # Dash parameters -------------------------------------------
+
         self.is_dashing = False
         self.dash_cooldown_ms = 3000  # 3 seconds cooldown per spec
         self._next_dash_time_ms = 0
@@ -101,27 +113,37 @@ class Player(GameObject):
         self.dash_start_time_ms = 0
         self.dash_scale = 0.8  # slightly smaller sprite during dash
 
-        # Max distance for look indicator (cursor dot) from player center
-        self.look_max_distance = 250
+        # -----------------------------------------------------------
+
+        # Cursor ----------------------------------------------------
+        self.look_max_distance = 250 # Max distance for look indicator (cursor dot) from player center
+        # -----------------------------------------------------------
+
+
+        # Rect ------------------------------------------------------
 
         # Ensure rect is positioned correctly relative to provided x,y as center
         # Incoming x_pos, y_pos are treated as center for convenience
         self.rect.centerx = x_pos
         self.rect.centery = y_pos
+        # -----------------------------------------------------------
 
-    def _handle_input(self):
-        keys = pygame.key.get_pressed()
-        direction = pygame.math.Vector2(0, 0)
+    def generate_walk_animation_frames(self):
+        for i in range(25):
+            img = pygame.image.load(
+                f"assets/pictures/walk_animation/mariachi_walk{i:04}.png"
+            ).convert_alpha()
+            self.anim_frames_right.append(img)
+            self.anim_frames_left.append(pygame.transform.flip(img, True, False))
 
-        if keys[pygame.K_w]:
-            direction.y -= 1
-        if keys[pygame.K_s]:
-            direction.y += 1
-        if keys[pygame.K_a]:
-            direction.x -= 1
-        if keys[pygame.K_d]:
-            direction.x += 1
+    def generate_attack_animation_frames(self):
+        for i in range(13):  # assuming 13 frames 0000 → 0012
+            img = pygame.image.load(
+                f"assets/pictures/guitar_hit_animation/mariachi_guitar_hit{i:04}.png"
+            ).convert_alpha()
+            self.wave_anim_frames.append(img)
 
+    def normalize_movement(self, direction: Vector2):
         # Normalize diagonal movement
         if direction.length() > 0:
             direction = direction.normalize()
@@ -131,10 +153,11 @@ class Player(GameObject):
             if abs(self.velocity.length()) < self.speed / 5:
                 self.velocity = pygame.math.Vector2(0, 0)
 
+    def animate(self):
         # ------------------ Animation ------------------
-        if getattr(self, "is_attacking", False):
+        if self.is_attacking == True:
             # Attack animation takes priority
-            self.attack_anim_index += getattr(self, "attack_anim_speed", 0.3)
+            self.attack_anim_index += self.attack_anim_speed
             if self.attack_anim_index >= len(self.wave_anim_frames):
                 # Attack finished, revert to walking/idle
                 self.is_attacking = False
@@ -158,6 +181,26 @@ class Player(GameObject):
         # ---------------------------------------------
 
         # Apply movement and clamp to map
+
+    def _handle_input(self):
+        keys = pygame.key.get_pressed()
+        direction = pygame.math.Vector2(0, 0)
+
+        if keys[pygame.K_w]:
+            direction.y -= 1
+        if keys[pygame.K_s]:
+            direction.y += 1
+        if keys[pygame.K_a]:
+            direction.x -= 1
+        if keys[pygame.K_d]:
+            direction.x += 1
+
+        # make all directions be the same speed
+        self.normalize_movement(direction)
+
+        # animate the player
+        self.animate()
+
         self.rect.x = int(max(0, min(self.map_width - self.rect.width, self.rect.x + self.velocity.x)))
         self.rect.y = int(max(0, min(self.map_height - self.rect.height, self.rect.y + self.velocity.y)))
 

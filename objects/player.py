@@ -70,6 +70,27 @@ class Player(GameObject):
             self.rect = self.sprite.get_rect()
             self.rect.center = old_center
 
+        # ==============================================================
+        # Attack animation
+        # ==============================================================
+        self.attack_anim_frames: list[pygame.Surface] = []
+        try:
+            # Klatki nazywają się mariachi_guitar_hit0000.png do mariachi_guitar_hit0012.png
+            for i in range(13):  # 13 klatek (0 do 12)
+                frame = pygame.image.load(
+                    f"assets/pictures/guitar_hit_animation/mariachi_guitar_hit{i:04}.png"
+                ).convert_alpha()
+                if self.scale != 1.0:
+                    fw, fh = frame.get_width(), frame.get_height()
+                    frame = pygame.transform.scale(frame, (max(1, int(fw * self.scale)), max(1, int(fh * self.scale))))
+                self.attack_anim_frames.append(frame)
+        except pygame.error as e:
+            print(f"[WARN] Nie udało się załadować animacji ataku: {e}")
+
+        self.is_attacking_anim = False
+        self.attack_anim_index: float = 0.0
+        self.attack_anim_speed: float = 0.4 # Jak szybko odtwarza się animacja
+
         # --- Health system ---
         self.max_health = 100
         self.current_health = self.max_health
@@ -298,6 +319,10 @@ class Player(GameObject):
                         except Exception:
                             on_beat_now = False
 
+                    # Uruchom animację ataku
+                    self.is_attacking_anim = True
+                    self.attack_anim_index = 0.0
+
                     max_radius = (
                         self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
                     )
@@ -347,6 +372,19 @@ class Player(GameObject):
             return
         return
 
+    def _update_attack_animation(self) -> None:
+        """Aktualizuje klatkę animacji ataku i kończy ją w odpowiednim momencie."""
+        if not self.is_attacking_anim:
+            return
+
+        self.attack_anim_index += self.attack_anim_speed
+
+        # Jeśli animacja się skończyła
+        if self.attack_anim_index >= len(self.attack_anim_frames):
+            self.is_attacking_anim = False
+            self.attack_anim_index = 0.0
+
+
     # ======================================================================
     # Główna pętla update / draw
     # ======================================================================
@@ -355,13 +393,16 @@ class Player(GameObject):
         if not self.is_alive:
             return
 
-        if not self.is_dashing:
+        # Zablokuj ruch podczas ataku i dasha
+        if not self.is_dashing and not self.is_attacking_anim:
             self._handle_input()
+
         self._handle_look_direction()
         self._try_start_dash()
         self._update_dash()
         self._handle_mouse_click()
         self._update_waves()
+        self._update_attack_animation()
 
     def draw(self, screen: pygame.Surface) -> None:
         # offset kamery
@@ -369,7 +410,17 @@ class Player(GameObject):
         if self.camera is not None:
             cam_x, cam_y = self.camera.x, self.camera.y
 
-        if self.is_dashing and self.is_alive:
+        if self.is_attacking_anim and self.attack_anim_frames:
+            # Rysuj animację ataku
+            frame_idx = int(self.attack_anim_index)
+            attack_sprite = self.attack_anim_frames[frame_idx]
+            if not self.facing_right:
+                attack_sprite = pygame.transform.flip(attack_sprite, True, False)
+            screen.blit(
+                attack_sprite,
+                (self.rect.x - cam_x, self.rect.y - cam_y),
+            )
+        elif self.is_dashing and self.is_alive:
             base_sprite = self.sprite if self.facing_right else self.sprite_flipped
             now = pygame.time.get_ticks()
             elapsed = now - self.dash_start_time_ms
@@ -436,6 +487,60 @@ class Player(GameObject):
         self._draw_health_bar(screen)
 
     # ======================================================================
+    # Health API + pasek
+    # ======================================================================
+
+    def _draw_health_bar(self, screen: pygame.Surface) -> None:
+        bar_width = self.SCREEN_W / 3
+        bar_height = 30
+        bar_y_offset = self.SCREEN_H / 14
+        x = int(self.SCREEN_W / 2 - bar_width / 2)
+        y = int(self.SCREEN_H - bar_y_offset)
+
+        if self.max_health > 0:
+            progress = max(0.0, min(1.0, self.current_health / self.max_health))
+        else:
+            progress = 0.0
+
+        fill_width = int(bar_width * progress)
+        if fill_width > 0:
+            pygame.draw.rect(screen, (255, 0, 0), (x, y, fill_width, bar_height))
+
+        pygame.draw.rect(
+            screen, (255, 255, 255), (x, y, int(bar_width), bar_height), 2
+        )
+
+    def take_damage(self, amount: int) -> None:
+        if not self.is_alive:
+            return
+        try:
+            dmg = int(amount)
+        except Exception:
+            dmg = 0
+        if dmg <= 0:
+            return
+        self.current_health -= dmg
+        if self.current_health <= 0:
+            self.current_health = 0
+            self.is_alive = False
+
+    def heal(self, amount: int) -> None:
+        if not self.is_alive:
+            return
+        try:
+            val = int(amount)
+        except Exception:
+            val = 0
+        if val <= 0:
+            return
+        self.current_health = min(self.max_health, self.current_health + val)
+
+    def get_health_percentage(self) -> float:
+        return (
+            0.0
+            if self.max_health <= 0
+            else max(0.0, min(1.0, self.current_health / self.max_health))
+        )
     # Health API + pasek
     # ======================================================================
 

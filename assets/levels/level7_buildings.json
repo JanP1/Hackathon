@@ -2,32 +2,64 @@
     "background": "main_background.png",
     "buildings": [
         {
-            "x": 896,
-            "y": 1975
+            "x": 1212,
+            "y": 1356,
+            "type": "house.png",
+            "scale": 0.5
         },
         {
-            "x": 2610,
-            "y": 2506
+            "x": 2014,
+            "y": 1348,
+            "type": "house2.png",
+            "scale": 0.5
         },
         {
-            "x": 1771,
-            "y": 1040,
-            "type": "house.png"
+            "x": 3051,
+            "y": 1569,
+            "type": "wall.png",
+            "scale": 0.5
         },
         {
-            "x": 2515,
-            "y": 1224,
-            "type": "wall.png"
+            "x": 3471,
+            "y": 1564,
+            "type": "wall.png",
+            "scale": 0.5
         },
         {
-            "x": 3255,
-            "y": 1233,
-            "type": "wall.png"
+            "x": 860,
+            "y": 3327,
+            "type": "wall.png",
+            "scale": 0.5
         },
         {
-            "x": 641,
-            "y": 1161,
-            "type": "house2.png"
+            "x": 1287,
+            "y": 3325,
+            "type": "wall.png",
+            "scale": 0.5
+        },
+        {
+            "x": 1722,
+            "y": 3320,
+            "type": "wall.png",
+            "scale": 0.5
+        },
+        {
+            "x": 1554,
+            "y": 2237,
+            "type": "house2.png",
+            "scale": 0.5
+        },
+        {
+            "x": 773,
+            "y": 1461,
+            "type": "wall.png",
+            "scale": 0.5
+        },
+        {
+            "x": 361,
+            "y": 1460,
+            "type": "wall.png",
+            "scale": 0.5
         }
     ]
 }

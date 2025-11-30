@@ -27,6 +27,7 @@ from objects.smoke import SmokeTrail
 from objects.bpm_counter import BPMCounter  # używany w BaseLevel
 from objects.ranged_enemy import RangedEnemy
 from objects.melee_enemy import MeleeEnemy
+from objects.kamikaze_enemy import KamikazeEnemy
 from objects.player_bullet import PlayerBullet
 from objects.building import Building
 from objects.game_object import GameObject
@@ -217,8 +218,9 @@ class Game(BaseLevel):
                     bx = b_data["x"]
                     by = b_data["y"]
                     b_type = b_data.get("type", "house.png")
+                    b_scale = b_data.get("scale", 1.0)
                     # Opcjonalnie scale, type itp.
-                    b = Building(bx, by, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0, sprite_name=b_type)
+                    b = Building(bx, by, SCREEN_WIDTH, SCREEN_HEIGHT, scale=b_scale, sprite_name=b_type)
                     if self.camera:
                         b.camera = self.camera
                     self.buildings.append(b)
@@ -510,8 +512,11 @@ class Game(BaseLevel):
                 continue
                 
             # Jeśli przeszło testy -> tworzymy wroga
-            # Losujemy typ wroga: 50% szans na Ranged, 50% na Melee
-            if random.random() < 0.5:
+            # Losujemy typ wroga: 40% Ranged, 40% Melee, 20% Kamikaze
+            rand_val = random.random()
+            enemy = None
+            
+            if rand_val < 0.4:
                 enemy = RangedEnemy(
                     x, y,
                     SCREEN_WIDTH, SCREEN_HEIGHT,
@@ -519,19 +524,28 @@ class Game(BaseLevel):
                     self.player
                 )
                 enemy.set_attack_cooldown(4)
-            else:
+            elif rand_val < 0.8:
                 enemy = MeleeEnemy(
                     x, y,
                     SCREEN_WIDTH, SCREEN_HEIGHT,
                     1.0,
                     self.player
                 )
-                enemy.set_attack_cooldown(2) # Melee attacks faster
+                enemy.set_attack_cooldown(2)
+            else:
+                enemy = KamikazeEnemy(
+                    x, y,
+                    SCREEN_WIDTH, SCREEN_HEIGHT,
+                    1.0,
+                    self.player
+                )
+                enemy.effects_manager = self.effects_manager
+                enemy.game_enemies = self.enemies
 
-            enemy.map_width = self.map_width
-            enemy.map_height = self.map_height
-            
-            self.add_enemy(enemy)
+            if enemy:
+                enemy.map_width = self.map_width
+                enemy.map_height = self.map_height
+                self.add_enemy(enemy)
             return
 
     def _handle_bullet_enemy_collisions(self) -> None:
@@ -899,6 +913,21 @@ if __name__ == "__main__":
             # damage_tint_timer is in ms (starts at 200)
             damage_tint = min(1.0, game.player.damage_tint_timer / 200.0) * 0.6 # max 0.6 opacity
 
+        # Black Hole Data
+        bh_active = game.effects_manager.black_hole_active
+        bh_pos = (0.0, 0.0)
+        bh_strength = 0.0
+        
+        if bh_active:
+            bh_timer = game.effects_manager.black_hole_timer
+            bh_duration = game.effects_manager.black_hole_duration
+            # Strength 0..1
+            bh_strength = bh_timer / bh_duration
+            
+            # Adjust pos by camera
+            raw_pos = game.effects_manager.black_hole_pos
+            bh_pos = (raw_pos[0] - cam_x, raw_pos[1] - cam_y)
+
         gl_post.render(
             game_surface, 
             bullets_data_screen, 
@@ -906,7 +935,9 @@ if __name__ == "__main__":
             current_time_ms,
             invert=invert,
             distortion_strength=distortion,
-            damage_tint=damage_tint
+            damage_tint=damage_tint,
+            black_hole_pos=bh_pos,
+            black_hole_strength=bh_strength
         )
 
         pygame.display.flip()

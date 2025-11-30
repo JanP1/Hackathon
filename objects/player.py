@@ -769,6 +769,11 @@ class Player(GameObject):
             needed = self.max_wave_charge - self.wave_charge
             count_surf = self.small_font.render(f"{needed}", True, (200, 200, 200))
             screen.blit(count_surf, (draw_x + draw_w + 5, draw_y + draw_h // 2 - 10))
+        else:
+            # Blink "LPM"
+            if (pygame.time.get_ticks() // 500) % 2 == 0:
+                lpm_surf = self.small_font.render("LPM", True, (0, 255, 255))
+                screen.blit(lpm_surf, (draw_x + draw_w + 5, draw_y + draw_h // 2 - 10))
 
         # 3. Slow Time Ability
         # Below Wave
@@ -816,4 +821,9 @@ class Player(GameObject):
             needed = self.max_slow_time_charge - self.slow_time_charge
             count_surf = self.small_font.render(f"{needed}", True, (200, 200, 200))
             screen.blit(count_surf, (s_draw_x + s_draw_w + 5, s_draw_y + s_draw_h // 2 - 10))
+        else:
+            # Blink "SPACE"
+            if (pygame.time.get_ticks() // 500) % 2 == 0:
+                space_surf = self.small_font.render("SPACE", True, (100, 0, 255))
+                screen.blit(space_surf, (s_draw_x + s_draw_w + 5, s_draw_y + s_draw_h // 2 - 10))
 

@@ -1,4 +1,5 @@
 import pygame
+import math
 from objects.game_object import GameObject
 from abc import abstractmethod
 
@@ -36,14 +37,34 @@ class Enemy(GameObject):
         
         # Default to active
         self.is_active = True
+
+        # Feedback & Physics
+        self.damage_tint_timer = 0.0
+        self.knockback_velocity = pygame.math.Vector2(0, 0)
+        self.knockback_friction = 0.9
     
     
-    def take_damage(self, amount: int):
+    def take_damage(self, amount: int, source_pos: tuple[int, int] = None):
         """Take damage and check if enemy dies."""
         if not self.is_alive:
             return
         
         self.current_health -= amount
+        
+        # Visual feedback
+        self.damage_tint_timer = 200.0 # ms
+
+        # Knockback
+        if source_pos:
+            sx, sy = source_pos
+            cx, cy = self.rect.center
+            dx = cx - sx
+            dy = cy - sy
+            dist = math.hypot(dx, dy)
+            if dist > 0:
+                force = 15.0 # Knockback strength
+                self.knockback_velocity = pygame.math.Vector2(dx/dist * force, dy/dist * force)
+
         if self.current_health <= 0:
             self.current_health = 0
             self.is_alive = False
@@ -99,6 +120,18 @@ class Enemy(GameObject):
         if delta_time is None:
             delta_time = self.time_manager.dt_ms
         
+        # Update feedback timers
+        if self.damage_tint_timer > 0:
+            self.damage_tint_timer = max(0, self.damage_tint_timer - delta_time)
+
+        # Apply knockback
+        if self.knockback_velocity.length_squared() > 0.1:
+            self.rect.x += int(self.knockback_velocity.x)
+            self.rect.y += int(self.knockback_velocity.y)
+            self.knockback_velocity *= self.knockback_friction
+            if self.knockback_velocity.length_squared() < 0.1:
+                self.knockback_velocity = pygame.math.Vector2(0, 0)
+
         # Update attack animation
         if self.is_attacking:
             self.attack_animation_time -= delta_time
@@ -115,8 +148,21 @@ class Enemy(GameObject):
         if not self.is_active:
             return
         
-        # Draw sprite
-        super().draw(screen)
+        # Draw sprite with tint if damaged
+        if self.damage_tint_timer > 0:
+            # Create a tinted copy
+            tinted_sprite = self.sprite.copy()
+            # Fill with red, using special flags to keep alpha
+            tinted_sprite.fill((255, 0, 0, 100), special_flags=pygame.BLEND_RGBA_MULT)
+            
+            cam_x, cam_y = 0, 0
+            if hasattr(self, "camera") and self.camera is not None:
+                cam_x = self.camera.x
+                cam_y = self.camera.y
+            
+            screen.blit(tinted_sprite, (self.rect.x - cam_x, self.rect.y - cam_y))
+        else:
+            super().draw(screen)
         
         # Draw health bar
         self.draw_health_bar(screen)

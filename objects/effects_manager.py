@@ -28,6 +28,12 @@ class EffectsManager:
         # Dane pocisków: (x, y, vx, vy) – aktualizowane na podstawie bullet_objects
         self.bullets_data: List[Tuple[float, float, float, float]] = []
 
+        # Black Hole
+        self.black_hole_active = False
+        self.black_hole_pos = (0.0, 0.0)
+        self.black_hole_timer = 0.0
+        self.black_hole_duration = 1000.0 # ms
+
     # -------------------------------------------------
     # Fale
     # -------------------------------------------------
@@ -43,6 +49,12 @@ class EffectsManager:
     def get_waves_data(self) -> List[Tuple[float, float, float, float]]:
         """Zwraca dane o falach dla shadera."""
         return self.waves_data
+
+    def trigger_black_hole(self, pos: Tuple[float, float], duration_ms: float = 1000.0):
+        self.black_hole_active = True
+        self.black_hole_pos = pos
+        self.black_hole_timer = duration_ms
+        self.black_hole_duration = duration_ms
 
     # -------------------------------------------------
     # Pociski – styl add_bullet
@@ -147,4 +159,11 @@ class EffectsManager:
             w for w in self.waves_data
             if (now - w[2]) < self.wave_max_lifetime_ms
         ]
+        
+        # Update Black Hole
+        if self.black_hole_active:
+            self.black_hole_timer -= scaled_dt * 1000.0
+            if self.black_hole_timer <= 0:
+                self.black_hole_active = False
+
         # Pocisków tutaj nie ruszamy – ich filtracja dzieje się w _sync_bullets_data()

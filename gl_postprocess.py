@@ -56,6 +56,10 @@ uniform float u_invert;      // 0.0 = brak, 1.0 = inwersja
 uniform float u_distortion;  // siła globalnego distortion
 uniform float u_damageTint;  // 0.0 = brak, 1.0 = max czerwony
 
+// Black Hole
+uniform vec2 u_blackHolePos;
+uniform float u_blackHoleStrength;
+
 varying vec2 v_tex;
 
 void main() {
@@ -64,6 +68,24 @@ void main() {
     vec2 fragCoord = uv * u_resolution;
 
     vec2 displaced = fragCoord;
+
+    // --- BLACK HOLE DISTORTION ---
+    if (u_blackHoleStrength > 0.0) {
+        vec2 bhPos = vec2(u_blackHolePos.x, u_resolution.y - u_blackHolePos.y);
+        vec2 rel = displaced - bhPos;
+        float dist = length(rel);
+        float radius = 350.0; 
+        
+        if (dist < radius) {
+            float norm = dist / radius;
+            // Pull towards center
+            float pull = pow(1.0 - norm, 2.0) * 150.0 * u_blackHoleStrength;
+            // Avoid division by zero or extreme pull at center
+            if (dist > 1.0) {
+                displaced -= normalize(rel) * pull;
+            }
+        }
+    }
 
     // Globalne distortion (np. falowanie całego ekranu)
     if (u_distortion > 0.0) {
@@ -162,6 +184,34 @@ void main() {
 
     vec4 col = texture2D(u_scene, finalUV);
 
+    // --- BLACK HOLE VISUALS (Cracks/Darkness) ---
+    if (u_blackHoleStrength > 0.0) {
+        vec2 bhPos = vec2(u_blackHolePos.x, u_resolution.y - u_blackHolePos.y);
+        // Recalculate relative pos from displaced coord to match distortion
+        vec2 rel = displaced - bhPos;
+        float dist = length(rel);
+        float radius = 350.0;
+        
+        if (dist < radius) {
+            float norm = dist / radius;
+            
+            // Dark center (event horizon)
+            float centerDark = smoothstep(0.0, 0.25, norm);
+            col.rgb *= centerDark;
+            
+            // Cracks (fractured space)
+            float angle = atan(rel.y, rel.x);
+            float noise = sin(angle * 20.0) * sin(angle * 13.0 + u_time * 2.0);
+            float cracks = smoothstep(0.6, 1.0, noise);
+            
+            // Cracks fade at edge
+            cracks *= (1.0 - norm);
+            
+            // Apply cracks (black lines)
+            col.rgb = mix(col.rgb, vec3(0.0), cracks * u_blackHoleStrength);
+        }
+    }
+
     // delikatna, półprzezroczysta czerwień
     vec3 redColor = vec3(1.0, 0.15, 0.15);
     
@@ -226,6 +276,9 @@ class GLPostProcessor:
         self.u_invert = glGetUniformLocation(self.program, "u_invert")
         self.u_distortion = glGetUniformLocation(self.program, "u_distortion")
         self.u_damageTint = glGetUniformLocation(self.program, "u_damageTint")
+        
+        self.u_blackHolePos = glGetUniformLocation(self.program, "u_blackHolePos")
+        self.u_blackHoleStrength = glGetUniformLocation(self.program, "u_blackHoleStrength")
 
         # wartości domyślne parametrów
         glUniform2f(self.u_resolution, float(self.width), float(self.height))
@@ -241,6 +294,9 @@ class GLPostProcessor:
         glUniform1f(self.u_invert, 0.0)
         glUniform1f(self.u_distortion, 0.0)
         glUniform1f(self.u_damageTint, 0.0)
+        
+        glUniform2f(self.u_blackHolePos, 0.0, 0.0)
+        glUniform1f(self.u_blackHoleStrength, 0.0)
 
         # sampler
         glUniform1i(self.u_scene, 0)  # tekstura na jednostce 0
@@ -342,6 +398,8 @@ class GLPostProcessor:
         invert: bool = False,
         distortion_strength: float = 0.0,
         damage_tint: float = 0.0,
+        black_hole_pos: tuple[float, float] = (0.0, 0.0),
+        black_hole_strength: float = 0.0,
     ):
         # upload tekstury sceny
         self._upload_scene_texture(surface)
@@ -363,6 +421,9 @@ class GLPostProcessor:
         glUniform1f(self.u_invert, 1.0 if invert else 0.0)
         glUniform1f(self.u_distortion, distortion_strength)
         glUniform1f(self.u_damageTint, damage_tint)
+        
+        glUniform2f(self.u_blackHolePos, float(black_hole_pos[0]), float(black_hole_pos[1]))
+        glUniform1f(self.u_blackHoleStrength, black_hole_strength)
 
         # dane distortu
         self._upload_bullets(bullets)

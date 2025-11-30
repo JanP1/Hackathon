@@ -121,6 +121,12 @@ class RangedEnemy(Enemy):
     
     def on_attack(self):
         """Shoot a projectile towards target."""
+        # Check if visible on camera
+        if self.camera:
+            cam_rect = pygame.Rect(self.camera.x, self.camera.y, self.camera.screen_width, self.camera.screen_height)
+            if not self.rect.colliderect(cam_rect):
+                return
+
         print(f"{self.name} shoots projectile! Damage: {self.damage}")
         
         # Calculate direction to target

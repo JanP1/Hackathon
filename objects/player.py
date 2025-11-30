@@ -17,7 +17,7 @@ class Player(GameObject):
         Player:
         - pełny system HP + pasek życia,
         - dash (LShift) z rotacją i skalowaniem sprite’a,
-        - sound waves (LPM) z on-beat bonusami,
+        - sound waves (LPM) z on-beat bonusami (WIĘKSZY ZASIĘG FALI),
         - look-indicator (białe kółko w kierunku myszy),
         - integracja z BPM przez wstrzykiwaną funkcję is_on_beat(),
         - przygotowana pod bullet-time (time_scale),
@@ -29,19 +29,21 @@ class Player(GameObject):
 
         self.is_alive = True
 
-        # ==============================================================
+        # ==============================================================#
+        # podstawowe stany
+        # ==============================================================#
+        self.facing_right: bool = True
+
+        # ==============================================================#
         # Mapa i kamera
-        # ==============================================================
-        # Domyślnie mapa ma rozmiar ekranu – level może to nadpisać.
+        # ==============================================================#
         self.map_width = screen_w
         self.map_height = screen_h
-
-        # Kamera będzie wstrzyknięta z zewnątrz (BaseLevel.set_map_size i/lub __init__)
         self.camera = None  # type: ignore
 
-        # ==============================================================
+        # ==============================================================#
         # Walk animation – JEDNA lista klatek, flip w draw
-        # ==============================================================
+        # ==============================================================#
         self.anim_frames: list[pygame.Surface] = []
 
         for i in range(25):
@@ -49,7 +51,6 @@ class Player(GameObject):
                 f"assets/pictures/walk_animation/mariachi_walk{i:04}.png"
             ).convert_alpha()
 
-            # Skalowanie pod self.scale
             if self.scale != 1.0:
                 fw = frame.get_width()
                 fh = frame.get_height()
@@ -62,7 +63,6 @@ class Player(GameObject):
 
         self.anim_index: float = 0.0
 
-        # Na starcie podmień default_sprite na pierwszą klatkę animacji
         if self.anim_frames:
             old_center = self.rect.center
             self.sprite = self.anim_frames[0]
@@ -70,26 +70,27 @@ class Player(GameObject):
             self.rect = self.sprite.get_rect()
             self.rect.center = old_center
 
-        # ==============================================================
+        # ==============================================================#
         # Attack animation
-        # ==============================================================
+        # ==============================================================#
         self.attack_anim_frames: list[pygame.Surface] = []
         try:
-            # Klatki nazywają się mariachi_guitar_hit0000.png do mariachi_guitar_hit0012.png
-            for i in range(13):  # 13 klatek (0 do 12)
+            for i in range(13):
                 frame = pygame.image.load(
                     f"assets/pictures/guitar_hit_animation/mariachi_guitar_hit{i:04}.png"
                 ).convert_alpha()
                 if self.scale != 1.0:
                     fw, fh = frame.get_width(), frame.get_height()
-                    frame = pygame.transform.scale(frame, (max(1, int(fw * self.scale)), max(1, int(fh * self.scale))))
+                    frame = pygame.transform.scale(
+                        frame, (max(1, int(fw * self.scale)), max(1, int(fh * self.scale)))
+                    )
                 self.attack_anim_frames.append(frame)
         except pygame.error as e:
             print(f"[WARN] Nie udało się załadować animacji ataku: {e}")
 
         self.is_attacking_anim = False
         self.attack_anim_index: float = 0.0
-        self.attack_anim_speed: float = 0.4 # Jak szybko odtwarza się animacja
+        self.attack_anim_speed: float = 0.4
 
         # --- Health system ---
         self.max_health = 100
@@ -100,56 +101,47 @@ class Player(GameObject):
         self.friction = 0.9
         self.velocity = pygame.math.Vector2(0, 0)
 
-        # --- Bullet-time scale (1.0 = normal) – używane przez zewnętrzny system ---
+        # --- Bullet-time scale ---
         self.time_scale: float = 1.0
 
-        # --- Sound wave visuals generated on mouse click ---
-        # list of dicts: {pos: (x,y), radius: float, max_radius: int, color, thickness, damage}
+        # --- Sound waves (atak) ---
         self.sound_waves: list[dict] = []
         self.wave_speed = 7
-        self.max_wave_radius = 180
+        self.max_wave_radius = 180           # normalny zasięg
         self.wave_color = (0, 255, 255)
-
-        # Kolor fali, gdy kliknięcie nastąpi "on beat" (opcjonalnie)
         self.on_beat_wave_color = (255, 0, 0)
         self.wave_thickness = 5
 
-        # Parametry wizualne fali dla kliknięcia on-beat (dłuższa i grubsza)
-        self.on_beat_max_wave_radius = 250
+        # WIĘKSZY ZASIĘG NA BEACIE + GRUBSZA FALA
+        self.on_beat_max_wave_radius = 250   # większy range gdy klik na beacie
         self.on_beat_wave_thickness = 12
 
-        # Click handling to avoid spawning too many waves at once
         self._mouse_was_pressed = False
-
-        # Attack cooldown (milliseconds)
         self.attack_cooldown_ms = 700
         self._next_attack_time_ms = 0
 
-        # Beat / damage system
         self.beat_counter = 0
         self.base_wave_damage = 10
         self.wave_damage_bonus = 0
 
-        # Funkcja sprawdzająca czy w tej klatce jest beat (wstrzykiwana z zewnątrz)
         self._on_beat_checker = None
 
         # --- Dash parameters ---
         self.is_dashing = False
-        self.dash_cooldown_ms = 1000  # cooldown dashu
+        self.dash_cooldown_ms = 1000
         self._next_dash_time_ms = 0
-        self.dash_duration_ms = 220   # total dash time
-        self.dash_speed = 18          # pixels per frame while dashing
+        self.dash_duration_ms = 220
+        self.dash_speed = 18
         self.dash_dir = pygame.math.Vector2(0, 0)
         self.dash_start_time_ms = 0
-        self.dash_scale = 0.8         # slightly smaller sprite during dash
+        self.dash_scale = 0.8
 
-        # Max distance for look indicator (cursor dot) from player center
+        # look indicator
         self.look_max_distance = 250
 
-        # --- EffectsManager (falka do shadera) ---
+        # EffectsManager
         self.effects_manager = None
 
-        # Ensure rect is positioned correctly relative to provided x,y as center
         self.rect.centerx = x_pos
         self.rect.centery = y_pos
 
@@ -164,10 +156,6 @@ class Player(GameObject):
         self.effects_manager = manager
 
     def set_map_size(self, map_width: int, map_height: int) -> None:
-        """
-        Wołane z BaseLevel.set_map_size – ustala rozmiar mapy, po której
-        może się poruszać gracz (clamping).
-        """
         if map_width > 0:
             self.map_width = int(map_width)
         if map_height > 0:
@@ -179,7 +167,6 @@ class Player(GameObject):
 
     def _handle_input(self) -> None:
         keys = pygame.key.get_pressed()
-
         direction = pygame.math.Vector2(0, 0)
 
         if keys[pygame.K_w]:
@@ -191,7 +178,6 @@ class Player(GameObject):
         if keys[pygame.K_d]:
             direction.x += 1
 
-        # Normalize diagonal movement so it's not faster than straight
         if direction.length() > 0:
             direction = direction.normalize()
             self.velocity = direction * self.speed
@@ -200,7 +186,6 @@ class Player(GameObject):
             if abs(self.velocity.length()) < self.speed / 5:
                 self.velocity = pygame.math.Vector2(0, 0)
 
-        # RUCH W KOORDYNATACH MAPY (NIE ekranu!)
         self.rect.x = int(
             max(0, min(self.map_width - self.rect.width, self.rect.x + self.velocity.x))
         )
@@ -208,9 +193,6 @@ class Player(GameObject):
             max(0, min(self.map_height - self.rect.height, self.rect.y + self.velocity.y))
         )
 
-        # ==================================================================
-        # Walk animation – update na podstawie velocity
-        # ==================================================================
         if self.anim_frames:
             if self.velocity.length_squared() > 0:
                 self.anim_index = (self.anim_index + 0.25) % len(self.anim_frames)
@@ -219,25 +201,19 @@ class Player(GameObject):
                 current = self.anim_frames[0]
 
             self.sprite = current
-            # flip tylko graficznie – kierunek trzymamy w self.facing_right
             self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
 
     def _handle_look_direction(self) -> None:
-        # Jeśli trwa dash, zawsze patrz w kierunku dashu
         if self.is_dashing:
             if abs(self.dash_dir.x) > 1e-6:
                 self.facing_right = self.dash_dir.x >= 0
             return
 
-        # W przeciwnym razie patrz na kursor w KOORDYNATACH ŚWIATA
         mx, my = pygame.mouse.get_pos()
-        cam_x = 0
         if self.camera is not None:
-            cam_x = self.camera.x
-            my += self.camera.y
             mx += self.camera.x
+            my += self.camera.y
 
-        # self.rect.centerx jest w koordach świata
         self.facing_right = mx >= self.rect.centerx
 
     # ======================================================================
@@ -249,8 +225,6 @@ class Player(GameObject):
         if keys[pygame.K_LSHIFT] and not self.is_dashing and self.is_alive:
             now = pygame.time.get_ticks()
             if now >= self._next_dash_time_ms:
-
-                # Prefer direction of current movement; if stationary, use cursor direction
                 if self.velocity.length_squared() > 0:
                     vec = self.velocity.normalize()
                 else:
@@ -270,7 +244,6 @@ class Player(GameObject):
                         vec = vec.normalize()
                 self.dash_dir = vec
 
-                # Obróć gracza w stronę dashu natychmiast po rozpoczęciu
                 if abs(self.dash_dir.x) > 1e-6:
                     self.facing_right = self.dash_dir.x >= 0
                 self.is_dashing = True
@@ -286,11 +259,9 @@ class Player(GameObject):
             self.is_dashing = False
             return
 
-        # Move along dash direction (w koordach mapy)
         self.rect.x = int(self.rect.x + self.dash_dir.x * self.dash_speed)
         self.rect.y = int(self.rect.y + self.dash_dir.y * self.dash_speed)
 
-        # Clamp do rozmiaru mapy
         self.rect.x = max(0, min(self.map_width - self.rect.width, self.rect.x))
         self.rect.y = max(0, min(self.map_height - self.rect.height, self.rect.y))
 
@@ -307,11 +278,10 @@ class Player(GameObject):
             return
 
         pressed = pygame.mouse.get_pressed(num_buttons=3)
-        if pressed[0]:  # left click
+        if pressed[0]:
             if not self._mouse_was_pressed:
                 now = pygame.time.get_ticks()
                 if now >= self._next_attack_time_ms:
-                    # Sprawdź beat
                     on_beat_now = False
                     if callable(self._on_beat_checker):
                         try:
@@ -319,10 +289,10 @@ class Player(GameObject):
                         except Exception:
                             on_beat_now = False
 
-                    # Uruchom animację ataku
                     self.is_attacking_anim = True
                     self.attack_anim_index = 0.0
 
+                    # TU SIĘ DZIEJE WIĘKSZY RANGE NA BEACIE
                     max_radius = (
                         self.on_beat_max_wave_radius if on_beat_now else self.max_wave_radius
                     )
@@ -332,7 +302,7 @@ class Player(GameObject):
                     color = self.wave_color
 
                     wave = {
-                        "pos": (self.rect.centerx, self.rect.centery),  # koordy świata
+                        "pos": (self.rect.centerx, self.rect.centery),
                         "radius": 0.0,
                         "max_radius": max_radius,
                         "color": color,
@@ -363,9 +333,7 @@ class Player(GameObject):
     def _update_waves(self) -> None:
         for wave in self.sound_waves:
             wave["radius"] += self.wave_speed
-        self.sound_waves = [
-            w for w in self.sound_waves if w["radius"] <= w["max_radius"]
-        ]
+        self.sound_waves = [w for w in self.sound_waves if w["radius"] <= w["max_radius"]]
 
     def on_beat(self) -> None:
         if not self.is_alive:
@@ -373,27 +341,22 @@ class Player(GameObject):
         return
 
     def _update_attack_animation(self) -> None:
-        """Aktualizuje klatkę animacji ataku i kończy ją w odpowiednim momencie."""
         if not self.is_attacking_anim:
             return
 
         self.attack_anim_index += self.attack_anim_speed
-
-        # Jeśli animacja się skończyła
         if self.attack_anim_index >= len(self.attack_anim_frames):
             self.is_attacking_anim = False
             self.attack_anim_index = 0.0
 
-
     # ======================================================================
-    # Główna pętla update / draw
+    # update / draw
     # ======================================================================
 
     def update(self) -> None:
         if not self.is_alive:
             return
 
-        # Zablokuj ruch podczas ataku i dasha
         if not self.is_dashing and not self.is_attacking_anim:
             self._handle_input()
 
@@ -405,13 +368,11 @@ class Player(GameObject):
         self._update_attack_animation()
 
     def draw(self, screen: pygame.Surface) -> None:
-        # offset kamery
         cam_x, cam_y = 0, 0
         if self.camera is not None:
             cam_x, cam_y = self.camera.x, self.camera.y
 
         if self.is_attacking_anim and self.attack_anim_frames:
-            # Rysuj animację ataku
             frame_idx = int(self.attack_anim_index)
             attack_sprite = self.attack_anim_frames[frame_idx]
             if not self.facing_right:
@@ -435,14 +396,12 @@ class Player(GameObject):
             )
             screen.blit(spun, spun_rect)
         else:
-            # sprite z flipem, ale pozycja z odejmowaniem kamery
             current_sprite = self.sprite if self.facing_right else self.sprite_flipped
             screen.blit(
                 current_sprite,
                 (self.rect.x - cam_x, self.rect.y - cam_y),
             )
 
-        # Fale dźwiękowe – koordy świata -> ekran = -cam
         for wave in self.sound_waves:
             if wave["radius"] > 0:
                 wx, wy = wave["pos"]
@@ -454,13 +413,11 @@ class Player(GameObject):
                     wave.get("thickness", self.wave_thickness),
                 )
 
-        # Dot w stronę myszy (w świecie, rysowany z kamerą)
         mx, my = pygame.mouse.get_pos()
         cam_x, cam_y = 0, 0
         if self.camera is not None:
             cam_x, cam_y = self.camera.x, self.camera.y
 
-        # kursor -> koordy świata
         world_mx = mx + cam_x
         world_my = my + cam_y
 
@@ -483,65 +440,10 @@ class Player(GameObject):
 
         pygame.draw.circle(screen, (255, 255, 255), (dot_x, dot_y), 8)
 
-        # Pasek życia (UI na ekranie – bez kamery)
         self._draw_health_bar(screen)
 
     # ======================================================================
-    # Health API + pasek
-    # ======================================================================
-
-    def _draw_health_bar(self, screen: pygame.Surface) -> None:
-        bar_width = self.SCREEN_W / 3
-        bar_height = 30
-        bar_y_offset = self.SCREEN_H / 14
-        x = int(self.SCREEN_W / 2 - bar_width / 2)
-        y = int(self.SCREEN_H - bar_y_offset)
-
-        if self.max_health > 0:
-            progress = max(0.0, min(1.0, self.current_health / self.max_health))
-        else:
-            progress = 0.0
-
-        fill_width = int(bar_width * progress)
-        if fill_width > 0:
-            pygame.draw.rect(screen, (255, 0, 0), (x, y, fill_width, bar_height))
-
-        pygame.draw.rect(
-            screen, (255, 255, 255), (x, y, int(bar_width), bar_height), 2
-        )
-
-    def take_damage(self, amount: int) -> None:
-        if not self.is_alive:
-            return
-        try:
-            dmg = int(amount)
-        except Exception:
-            dmg = 0
-        if dmg <= 0:
-            return
-        self.current_health -= dmg
-        if self.current_health <= 0:
-            self.current_health = 0
-            self.is_alive = False
-
-    def heal(self, amount: int) -> None:
-        if not self.is_alive:
-            return
-        try:
-            val = int(amount)
-        except Exception:
-            val = 0
-        if val <= 0:
-            return
-        self.current_health = min(self.max_health, self.current_health + val)
-
-    def get_health_percentage(self) -> float:
-        return (
-            0.0
-            if self.max_health <= 0
-            else max(0.0, min(1.0, self.current_health / self.max_health))
-        )
-    # Health API + pasek
+    # Health API
     # ======================================================================
 
     def _draw_health_bar(self, screen: pygame.Surface) -> None:

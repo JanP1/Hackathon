@@ -13,7 +13,7 @@ from objects.effects_manager import EffectsManager
 from objects.player import Player
 from objects.bpm_counter import BPMCounter
 from objects.ranged_enemy import RangedEnemy
-from objects.camera import Camera  # <-- DODANE: kamera
+from objects.camera import Camera  # <-- kamera
 
 
 class BaseLevel(ABC):
@@ -31,6 +31,7 @@ class BaseLevel(ABC):
     - Player:
         * wstrzyknięty effects_manager (fale),
         * wstrzyknięty time_scale,
+        * wstrzyknięty on_beat_checker z BPMCounter,
     - lista wrogów + wspólna obsługa on_beat(),
     - debug HUD (nazwa poziomu, FPS, time_scale, speed),
     - KAMERA:
@@ -145,6 +146,18 @@ class BaseLevel(ABC):
 
         self.beat_triggered: bool = False
 
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # WSTRZYKNIĘCIE ON-BEAT CHECKERA DO PLAYERA
+        # teraz Player._handle_mouse_click będzie wiedział,
+        # czy klik nastąpił w oknie beatu i wtedy odpali większy zasięg fali
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        if hasattr(self.player, "set_on_beat_checker") and self.bpm_counter is not None:
+            try:
+                self.player.set_on_beat_checker(self.bpm_counter.is_on_beat)
+            except Exception as e:
+                print(f"[BPM] Warning: could not inject on_beat_checker into player: {e}")
+        # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
         # ------------------------------------------------------------------
         # Enemies
         # ------------------------------------------------------------------
@@ -237,8 +250,7 @@ class BaseLevel(ABC):
         self.stop_audio()
         # jeżeli korzystasz z game_state_managera
         if self.game_state_manager is not None:
-            # przykładowo:
-            # self.game_state_manager.change_state("start")
+            # np. self.game_state_manager.change_state("start")
             pass
 
     def _change_time_scale(self, delta: float) -> None:
@@ -284,7 +296,7 @@ class BaseLevel(ABC):
         # upewnij się, że obiekty mają aktualny time_scale
         self._apply_time_scale_to_objects()
 
-        # BPMCounter (oparty o MIDI)
+        # BPMCounter (oparty o MIDI) – delta w sekundach
         if self.bpm_counter is not None:
             self.bpm_counter.update(scaled_dt)
 

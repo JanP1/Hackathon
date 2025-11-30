@@ -11,6 +11,9 @@ class RangedEnemy(Enemy):
         self.rect.width = self.rect.width
         self.rect.height = self.rect.height
 
+        self.map_width = SCREEN_W
+        self.map_height = SCREEN_H
+
         self.projectiles = []
         self.move_speed = 150.0  # px/s
         self.target = target
@@ -71,6 +74,7 @@ class RangedEnemy(Enemy):
             projectile.update(dt_sec) # Przekazujemy dt w sekundach
             if not projectile.is_active:
                 self.projectiles.remove(projectile)
+        self.projectile_check_collision()
     
     
     def on_attack(self):
@@ -82,16 +86,10 @@ class RangedEnemy(Enemy):
             dx = self.target_x - self.rect.centerx
             dy = self.target_y - self.rect.centery
             distance = (dx**2 + dy**2) ** 0.5
-            
-            if distance > 0:
-                vx = (dx / distance) * self.projectile_speed
-                vy = (dy / distance) * self.projectile_speed
-            else:
-                vx = self.projectile_speed if self.facing_right else -self.projectile_speed
-                vy = 0
         else:
-            vx = self.projectile_speed if self.facing_right else -self.projectile_speed
-            vy = 0
+            # Jeśli nie ma celu, strzel w kierunku, w którym patrzysz
+            dx = 1 if self.facing_right else -1
+            dy = 0
         
         # Create projectile as GameObject
         projectile = Projectile(
@@ -99,8 +97,11 @@ class RangedEnemy(Enemy):
             self.rect.centery,
             self.SCREEN_W,
             self.SCREEN_H,
-            vx, vy,
-            self.damage
+            dx, dy, # Przekazujemy wektor kierunku, a nie finalną prędkość
+            self.damage,
+            speed=self.projectile_speed, # Przekazujemy prędkość jako nazwany argument
+            map_width=self.map_width,
+            map_height=self.map_height
         )
         projectile.camera = self.camera  # Pass camera reference
         self.projectiles.append(projectile)

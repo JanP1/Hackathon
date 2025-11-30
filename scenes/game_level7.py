@@ -118,6 +118,8 @@ class Game(BaseLevel):
             1.0,            # scale
             self.player,    # target
         )
+        ranged.map_width = map_width
+        ranged.map_height = map_height
         ranged.set_attack_cooldown(4)  # co 4 beaty
         self.add_enemy(ranged)         # ustawia mu time_scale + effects_manager
 

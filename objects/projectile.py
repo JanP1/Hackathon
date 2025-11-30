@@ -3,15 +3,40 @@ from objects.game_object import GameObject
 
 class Projectile(GameObject):
     def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, 
-                 vx: float, vy: float, damage: int, scale: float = 0.1):
+                 direction_x: float, direction_y: float, damage: int, speed: float = 5.0, 
+                 map_width: int = None, map_height: int = None, scale: float = 0.1): #type: ignore
+        """
+        Create a projectile.
+        
+        Args:
+            x_pos, y_pos: Starting position
+            SCREEN_W, SCREEN_H: Screen dimensions
+            direction_x, direction_y: Direction vector (will be normalized)
+            damage: Damage dealt on hit
+            speed: Movement speed (pixels per frame)
+            map_width, map_height: Map boundaries (if None, uses screen dimensions)
+            scale: Sprite scale
+        """
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale, "projectile")
         
-        self.vx = vx
-        self.vy = vy
+        # Normalize direction and apply speed
+        length = (direction_x**2 + direction_y**2) ** 0.5
+        if length > 0:
+            self.vx = (direction_x / length) * speed
+            self.vy = (direction_y / length) * speed
+        else:
+            self.vx = speed
+            self.vy = 0
+        
         self.damage = damage
+        self.speed = speed
         self.is_active = True
         
-        # Create a simple circular sprite if needed
+        # Map boundaries
+        self.map_width = map_width if map_width is not None else SCREEN_W
+        self.map_height = map_height if map_height is not None else SCREEN_H
+        
+        # Visual properties
         self.radius = 5
         self.color = (255, 255, 0)  # Yellow
     
@@ -20,12 +45,12 @@ class Projectile(GameObject):
         Move the projectile.
         delta_time jest w sekundach.
         """
-        self.rect.x += self.vx * delta_time # type: ignore
-        self.rect.y += self.vy * delta_time # type: ignore
+        self.rect.x += self.vx * delta_time #type: ignore
+        self.rect.y += self.vy * delta_time #type: ignore
         
-        # Deactivate if off screen
-        if (self.rect.x < 0 or self.rect.x > self.SCREEN_W or
-            self.rect.y < 0 or self.rect.y > self.SCREEN_H):
+        # Deactivate if off map boundaries
+        if (self.rect.x < 0 or self.rect.x > self.map_width or
+            self.rect.y < 0 or self.rect.y > self.map_height):
             self.is_active = False
     
     def draw(self, screen, camera=None):
@@ -35,8 +60,8 @@ class Projectile(GameObject):
         
         cam_x, cam_y = 0, 0
         if camera is not None:
-            cam_x = self.camera.x
-            cam_y = self.camera.y
+            cam_x = camera.x
+            cam_y = camera.y
 
         pygame.draw.circle(screen, self.color, 
                          (int(self.rect.centerx - cam_x), 

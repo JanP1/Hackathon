@@ -65,8 +65,19 @@ class Player(GameObject):
             self.sprite = self.anim_frames[0]
             self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
             self.rect = self.sprite.get_rect()
-            self.rect.center = old_center
-
+            
+            # Adjust rect for collision (smaller hitbox)
+            # 10px from left, 10px from right, 10px from top. Bottom stays same.
+            self.hitbox_offset_x = 50
+            self.hitbox_offset_y = 50
+            
+            self.rect.width -= (self.hitbox_offset_x * 2)
+            self.rect.height -= self.hitbox_offset_y
+            
+            # Center the new rect on the old center (or initial position)
+            # Note: x_pos, y_pos are applied at the end of __init__
+            # But here we are inside __init__, so we just prepare the size.
+            
         # ==================================================================
         # Attack animation
         # ==================================================================
@@ -144,6 +155,21 @@ class Player(GameObject):
 
         self.look_max_distance = 250
         self.effects_manager = None
+
+        # --- Sounds ---
+        self.sound_left = None
+        self.sound_fail = None
+        try:
+            self.sound_left = pygame.mixer.Sound("assets/sounds/left.mp3")
+            self.sound_left.set_volume(0.5)
+        except Exception as e:
+            print(f"[WARN] Player sound left.mp3 error: {e}")
+
+        try:
+            self.sound_fail = pygame.mixer.Sound("assets/sounds/fail.mp3")
+            self.sound_fail.set_volume(0.5)
+        except Exception as e:
+            print(f"[WARN] Player sound fail.mp3 error: {e}")
 
         self.rect.centerx = x_pos
         self.rect.centery = y_pos
@@ -335,8 +361,14 @@ class Player(GameObject):
                         self.wave_damage_bonus += 15
                         # proste: zapal timer napisu PERFECT! na ~0.6 s
                         self.perfect_text_timer_ms = 600
+                        
+                        if self.sound_left:
+                            self.sound_left.play()
+                    else:
+                        if self.sound_fail:
+                            self.sound_fail.play()
 
-                    self.play_sound("guitar")
+                    # self.play_sound("guitar")
                     self._next_attack_time_ms = now + self.attack_cooldown_ms
             self._mouse_was_pressed = True
         else:
@@ -393,6 +425,10 @@ class Player(GameObject):
         if self.camera is not None:
             cam_x, cam_y = self.camera.x, self.camera.y
 
+        # Offset for drawing sprite relative to hitbox
+        draw_x = self.rect.x - getattr(self, "hitbox_offset_x", 0) - cam_x
+        draw_y = self.rect.y - getattr(self, "hitbox_offset_y", 0) - cam_y
+
         if self.is_attacking_anim and self.attack_anim_frames:
             frame_idx = int(self.attack_anim_index)
             attack_sprite = self.attack_anim_frames[frame_idx]
@@ -400,7 +436,7 @@ class Player(GameObject):
                 attack_sprite = pygame.transform.flip(attack_sprite, True, False)
             screen.blit(
                 attack_sprite,
-                (self.rect.x - cam_x, self.rect.y - cam_y),
+                (draw_x, draw_y),
             )
         elif self.is_dashing and self.is_alive:
             base_sprite = self.sprite if self.facing_right else self.sprite_flipped
@@ -412,15 +448,21 @@ class Player(GameObject):
             )
             angle = 360 * t if self.facing_right else -360 * t
             spun = pygame.transform.rotozoom(base_sprite, -angle, self.dash_scale)
+            
+            # Center spun sprite on the visual center of the character
+            # Visual center is hitbox center adjusted by offset
+            visual_center_x = self.rect.centerx
+            visual_center_y = self.rect.centery - 5 # Approximate visual center adjustment
+            
             spun_rect = spun.get_rect(
-                center=(self.rect.centerx - cam_x, self.rect.centery - cam_y)
+                center=(visual_center_x - cam_x, visual_center_y - cam_y)
             )
             screen.blit(spun, spun_rect)
         else:
             current_sprite = self.sprite if self.facing_right else self.sprite_flipped
             screen.blit(
                 current_sprite,
-                (self.rect.x - cam_x, self.rect.y - cam_y),
+                (draw_x, draw_y),
             )
 
         # Fale

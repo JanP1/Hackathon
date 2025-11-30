@@ -26,6 +26,7 @@ from objects.smoke import SmokeTrail
 from objects.bpm_counter import BPMCounter  # używany w BaseLevel
 from objects.ranged_enemy import RangedEnemy
 from objects.player_bullet import PlayerBullet
+from objects.building import Building
 
 from objects.audio_manager import Level1AudioManager  # już używany w BaseLevel
 from objects.debugHUD import Level1DebugHUD          # jw.
@@ -123,12 +124,29 @@ class Game(BaseLevel):
         ranged.set_attack_cooldown(4)  # co 4 beaty
         self.add_enemy(ranged)         # ustawia mu time_scale + effects_manager
 
+        # ------------------------
+        # BUDYNKI
+        # ------------------------
+        self.buildings: list[Building] = []
+        # Przykładowy budynek
+        b = Building(800, 600, SCREEN_WIDTH, SCREEN_HEIGHT, scale=1.0)
+        if self.camera:
+            b.camera = self.camera
+        self.buildings.append(b)
 
         # pociski gracza (specjal skill – prawy przycisk myszy)
         self.player_bullets: list[PlayerBullet] = []
 
         # dymy eksplozji na wrogach
         self.smoke_explosions: list[SmokeTrail] = []
+
+        # Dźwięk prawego przycisku
+        self.sound_right = None
+        try:
+            self.sound_right = pygame.mixer.Sound("assets/sounds/right.mp3")
+            self.sound_right.set_volume(0.5)
+        except Exception as e:
+            print(f"[WARN] Game sound right.mp3 error: {e}")
 
     # ======================================================================
     # EVENTY SPECYFICZNE DLA LEVEL7
@@ -151,6 +169,10 @@ class Game(BaseLevel):
     def _shoot_special(self) -> None:
         # pozycja gracza
         px, py = self.player.rect.center
+
+        # Dźwięk
+        if self.sound_right:
+            self.sound_right.play()
 
         # kierunek = celowanie w pozycję myszy (uwzględniając kamerę)
         mx, my = pygame.mouse.get_pos()
@@ -216,6 +238,9 @@ class Game(BaseLevel):
 
         # --- Kurczenie wrogów trafionych specjalnym strzałem ---
         self._update_enemy_shrink(scaled_dt)
+
+        # --- Kolizje z budynkami ---
+        self._handle_building_collisions()
 
         # --- Dymy eksplozji na wrogach ---
         for trail in self.smoke_explosions:
@@ -301,6 +326,61 @@ class Game(BaseLevel):
         if to_remove:
             self.enemies = [e for e in self.enemies if e not in to_remove]
 
+    def _handle_building_collisions(self) -> None:
+        """
+        Sprawdza kolizje gracza i wrogów z budynkami.
+        Wypycha ich, jeśli weszli w collision_rect budynku.
+        """
+        # 1. Gracz
+        for b in self.buildings:
+            self._resolve_building_collision(self.player, b)
+
+        # 2. Wrogowie
+        for enemy in self.enemies:
+            if getattr(enemy, "destroying", False):
+                continue
+            for b in self.buildings:
+                self._resolve_building_collision(enemy, b)
+
+    def _resolve_building_collision(self, mover, building) -> None:
+        # Modyfikujemy hitbox budynku pod konkretnego movera
+        collision_rect = building.collision_rect.copy()
+        
+        # Skracamy hitbox od dołu o wysokość postaci - 10px
+        # Dzięki temu postać może wejść "na" budynek, aż jej stopy (bottom)
+        # dotkną oryginalnego dołu budynku (z tolerancją 10px).
+        offset = mover.rect.height - 10
+        if offset > 0:
+            collision_rect.height = max(0, collision_rect.height - offset)
+            
+        self._resolve_collision(mover, collision_rect)
+
+    def _resolve_collision(self, mover, static_rect: pygame.Rect) -> None:
+        """
+        Prosta rezolucja kolizji AABB -> wypchnięcie movera z static_rect
+        w stronę najmniejszego nakładania się.
+        """
+        if not mover.rect.colliderect(static_rect):
+            return
+
+        # Obliczamy overlap z każdej strony
+        overlap_left = mover.rect.right - static_rect.left
+        overlap_right = static_rect.right - mover.rect.left
+        overlap_top = mover.rect.bottom - static_rect.top
+        overlap_bottom = static_rect.bottom - mover.rect.top
+
+        # Znajdujemy najmniejsze wypchnięcie
+        min_overlap = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+        if min_overlap == overlap_left:
+            mover.rect.right = static_rect.left
+        elif min_overlap == overlap_right:
+            mover.rect.left = static_rect.right
+        elif min_overlap == overlap_top:
+            mover.rect.bottom = static_rect.top
+        elif min_overlap == overlap_bottom:
+            mover.rect.top = static_rect.bottom
+
     # ======================================================================
     # RYSOWANIE SPECYFICZNE DLA LEVEL7
     # ======================================================================
@@ -319,6 +399,16 @@ class Game(BaseLevel):
             self.screen.blit(self.background_image, (-cam_x, -cam_y))
         else:
             self.screen.fill(self.bg_color)
+
+        # Budynki (rysowane przed postaciami, żeby postacie mogły wejść "przed" nie,
+        # ale uwaga na sortowanie Y - w prostym 2D bez Y-sort budynki mogą zasłaniać
+        # albo być zasłaniane nienaturalnie. Na razie rysujemy "pod" postaciami.)
+        # Idealnie byłoby posortować wszystko (gracz, wrogowie, budynki) po Y.
+        # Ale trzymając się prostej struktury:
+        
+        # Rysujemy budynki
+        for b in self.buildings:
+            b.draw(self.screen)
 
         # pociski (w tym ich dym)
         for bullet in self.player_bullets:

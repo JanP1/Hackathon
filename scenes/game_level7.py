@@ -374,6 +374,10 @@ class Game(BaseLevel):
         # Trafienie w beat -> PERFECT!
         self.player.perfect_text_timer_ms = 600
         
+        # Trigger guitar hit animation
+        self.player.is_attacking_anim = True
+        self.player.attack_anim_index = 0.0
+        
         # Reset cooldownu
         self.special_attack_cooldown = self.special_attack_max_cooldown
 

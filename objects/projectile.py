@@ -32,6 +32,10 @@ class Projectile(GameObject):
         self.speed = speed
         self.is_active = True
         
+        # Float position for precision
+        self.pos_x = float(x_pos)
+        self.pos_y = float(y_pos)
+        
         # Map boundaries
         self.map_width = map_width if map_width is not None else SCREEN_W
         self.map_height = map_height if map_height is not None else SCREEN_H
@@ -48,8 +52,11 @@ class Projectile(GameObject):
         if delta_time is None:
             delta_time = self.time_manager.dt
 
-        self.rect.x += self.vx * delta_time #type: ignore
-        self.rect.y += self.vy * delta_time #type: ignore
+        self.pos_x += self.vx * delta_time
+        self.pos_y += self.vy * delta_time
+        
+        self.rect.x = int(self.pos_x)
+        self.rect.y = int(self.pos_y)
         
         # Deactivate if off map boundaries
         if (self.rect.x < 0 or self.rect.x > self.map_width or

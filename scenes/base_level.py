@@ -63,6 +63,9 @@ class BaseLevel:
         
         enemy = RangedEnemy(x, y, self.WIDTH, self.HEIGHT, 0.25, self.player)
         enemy.camera = self.camera # type: ignore
+        enemy.map_height = self.bg_width #type: ignore
+        enemy.map_width = self.bg_height #type: ignore
+
         self.enemies.append(enemy)
 
 
@@ -143,7 +146,7 @@ Username for 'https://github.com': l mechanics.
         for enemy in self.enemies:
             if enemy.is_active and enemy.is_alive:
                 enemy.draw(self.screen)
-        
+
         self.bpm_counter.draw(self.screen)
 
 

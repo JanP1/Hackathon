@@ -6,7 +6,7 @@ class RangedEnemy(Enemy):
     def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float, target):
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale,
                         name="ranged_enemy", max_health=60, 
-                        attack_cooldown=4, damage=20)
+                        attack_cooldown=4, damage=5)
         
         self.rect.width = self.rect.width
         self.rect.height = self.rect.height
@@ -77,28 +77,24 @@ class RangedEnemy(Enemy):
         if self.target_x is not None and self.target_y is not None:
             dx = self.target_x - self.rect.centerx
             dy = self.target_y - self.rect.centery
-            distance = (dx**2 + dy**2) ** 0.5
-            
-            if distance > 0:
-                vx = (dx / distance) * self.projectile_speed
-                vy = (dy / distance) * self.projectile_speed
-            else:
-                vx = 5 if self.facing_right else -5
-                vy = 0
         else:
-            vx = 5 if self.facing_right else -5
-            vy = 0
+            dx = 1 if self.facing_right else -1
+            dy = 0
         
-        # Create projectile as GameObject
+        # Create projectile with map boundaries
         projectile = Projectile(
             self.rect.centerx, 
             self.rect.centery,
             self.SCREEN_W,
             self.SCREEN_H,
-            vx, vy,
-            self.damage
+            dx,  # direction x
+            dy,  # direction y
+            self.damage,
+            speed=self.projectile_speed,
+            map_width=4096,   # Pass map width
+            map_height=4096   # Pass map height
         )
-        projectile.camera = self.camera  # Pass camera reference
+        projectile.camera = self.camera
         self.projectiles.append(projectile)
     
     def draw_attack(self, screen):

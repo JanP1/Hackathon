@@ -38,7 +38,7 @@ class TestLevel:
         self.player.update()
         
 
-# In TestLevel.__init__ after creating player and camera
+        # In TestLevel.__init__ after creating player and camera
         self.player.camera = self.camera
         # update camera
         self.camera.update(self.player)
@@ -50,8 +50,6 @@ class TestLevel:
 
 
         # get camera-adjusted rect
-        sprite_rect = self.camera.apply(self.player.rect).copy()
-
         
         # draw the sprite
         self.player.draw(self.display)  # let Player handle sprite flipping, dot, waves
@@ -59,9 +57,9 @@ class TestLevel:
 
         # checking hitbox
         # draw hitbox rectangle (always red, thickness=2)
-        pygame.draw.rect(
-            self.display,
-            (255, 0, 0),
-            self.camera.apply(self.player.rect),  # apply camera offset
-            2
-        )
+        # pygame.draw.rect(
+        #     self.display,
+        #     (255, 0, 0),
+        #     self.camera.apply(self.player.rect),  # apply camera offset
+        #     2
+        # )

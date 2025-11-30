@@ -15,9 +15,11 @@ class Player(GameObject):
 
         # -------------------------- Experimental
 
+        self.walk_anim_speed = 0.25    # smaller = slower walking animation
+        self.attack_anim_speed = 2   # smaller = slower attack animation
 
-# Add at the end of Player.__init__, after camera & sprite_flipped
-# Load animation frames for right and left facing
+        # Add at the end of Player.__init__, after camera & sprite_flipped
+        # Load animation frames for right and left facing
         self.anim_frames_right = []
         self.anim_frames_left = []
         for i in range(25):
@@ -28,6 +30,16 @@ class Player(GameObject):
             self.anim_frames_left.append(pygame.transform.flip(img, True, False))
         self.anim_index = 0
 
+        # Guitar hit (wave attack) animation
+        self.wave_anim_frames = []
+        for i in range(13):  # assuming 13 frames 0000 → 0012
+            img = pygame.image.load(
+                f"assets/pictures/guitar_hit_animation/mariachi_guitar_hit{i:04}.png"
+            ).convert_alpha()
+            self.wave_anim_frames.append(img)
+
+        self.wave_anim_index = 0
+        self.active_wave_animations = []  # list of dicts: {"pos": (x,y), "index": float}
         
 # At the end of Player.__init__
         self.facing_right = True
@@ -99,7 +111,6 @@ class Player(GameObject):
 
     def _handle_input(self):
         keys = pygame.key.get_pressed()
-
         direction = pygame.math.Vector2(0, 0)
 
         if keys[pygame.K_w]:
@@ -111,28 +122,42 @@ class Player(GameObject):
         if keys[pygame.K_d]:
             direction.x += 1
 
-        # Normalize diagonal movement so it's not faster than straight
+        # Normalize diagonal movement
         if direction.length() > 0:
             direction = direction.normalize()
             self.velocity = direction * self.speed
         else:
             self.velocity *= self.friction
-
             if abs(self.velocity.length()) < self.speed / 5:
                 self.velocity = pygame.math.Vector2(0, 0)
 
-        
-        # ------------------------------------------ Experimental
-        # Animacja
-        if self.velocity.length_squared() > 0:
-            self.anim_index = (self.anim_index + 0.25) % len(self.anim_frames_right)
-            self.sprite = self.anim_frames_right[int(self.anim_index)] if self.facing_right else self.anim_frames_left[int(self.anim_index)]
+        # ------------------ Animation ------------------
+        if getattr(self, "is_attacking", False):
+            # Attack animation takes priority
+            self.attack_anim_index += getattr(self, "attack_anim_speed", 0.3)
+            if self.attack_anim_index >= len(self.wave_anim_frames):
+                # Attack finished, revert to walking/idle
+                self.is_attacking = False
+                self.attack_anim_index = 0
+                if self.velocity.length_squared() > 0:
+                    self.anim_index = (self.anim_index + getattr(self, "walk_anim_speed", 0.25)) % len(self.anim_frames_right)
+                    self.sprite = self.anim_frames_right[int(self.anim_index)] if self.facing_right else self.anim_frames_left[int(self.anim_index)]
+                else:
+                    self.sprite = self.anim_frames_right[0] if self.facing_right else self.anim_frames_left[0]
+            else:
+                # Flip attack frame if facing left
+                frame = self.wave_anim_frames[int(self.attack_anim_index)]
+                self.sprite = pygame.transform.flip(frame, True, False) if not self.facing_right else frame
         else:
-            self.sprite = self.anim_frames_right[0] if self.facing_right else self.anim_frames_left[0]
+            # Normal walking/idle animation
+            if self.velocity.length_squared() > 0:
+                self.anim_index = (self.anim_index + getattr(self, "walk_anim_speed", 0.25)) % len(self.anim_frames_right)
+                self.sprite = self.anim_frames_right[int(self.anim_index)] if self.facing_right else self.anim_frames_left[int(self.anim_index)]
+            else:
+                self.sprite = self.anim_frames_right[0] if self.facing_right else self.anim_frames_left[0]
+        # ---------------------------------------------
 
-        # ------------------------------------------------------
-
-        # Apply movement and clamp to screen
+        # Apply movement and clamp to map
         self.rect.x = int(max(0, min(self.map_width - self.rect.width, self.rect.x + self.velocity.x)))
         self.rect.y = int(max(0, min(self.map_height - self.rect.height, self.rect.y + self.velocity.y)))
 
@@ -225,6 +250,14 @@ class Player(GameObject):
                         # Store damage so other systems can read it
                         "damage": self.base_wave_damage + self.wave_damage_bonus,
                     })
+
+
+                    # Start attack animation ---------
+                    self.is_attacking = True
+                    self.attack_anim_index = 0
+                    # --------------------------------
+
+
                     # Jeśli kliknięto dokładnie w beat, zwiększ licznik i bonus obrażeń od razu
                     if on_beat_now:
                         self.beat_counter += 1

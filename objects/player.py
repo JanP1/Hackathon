@@ -473,7 +473,7 @@ class Player(GameObject):
         # dt do liczenia timera PERFECT!
         delta_ms = self.time_manager.dt_ms
 
-        if not self.is_dashing and not self.is_attacking_anim:
+        if not self.is_dashing:
             self._handle_input()
 
         self._handle_look_direction()

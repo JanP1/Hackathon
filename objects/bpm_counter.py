@@ -85,6 +85,10 @@ class BPMCounter(GameObject):
         # Colors
         self.static_color = (100, 100, 255)  # Blue
         self.moving_color = (255, 100, 100)  # Red
+        self.hit_color = (255, 255, 0) # Yellow
+        
+        self.hit_feedback_timer = 0.0
+        self.hit_feedback_duration = 0.2 # seconds
 
         # Pulse effect
         self.pulse_scale = 1.0
@@ -95,6 +99,10 @@ class BPMCounter(GameObject):
     # ==============================
     # Konfiguracja
     # ==============================
+
+    def trigger_hit_feedback(self):
+        """Trigger visual feedback for a perfect hit."""
+        self.hit_feedback_timer = self.hit_feedback_duration
 
     def set_bpm(self, bpm: int):
         """
@@ -198,6 +206,9 @@ class BPMCounter(GameObject):
         # zabezpieczenie na minusy
         if delta_time < 0.0:
             delta_time = 0.0
+            
+        if self.hit_feedback_timer > 0:
+            self.hit_feedback_timer -= delta_time
 
         if self.use_midi:
             self._update_from_midi(delta_time)
@@ -231,7 +242,12 @@ class BPMCounter(GameObject):
             (pivot_x + rect_width // 2, pivot_y - rect_height),  # Top right
             (pivot_x - rect_width // 2, pivot_y - rect_height),  # Top left
         ]
-        pygame.draw.polygon(screen, self.static_color, static_points)
+        
+        current_static_color = self.static_color
+        if self.hit_feedback_timer > 0:
+            current_static_color = self.hit_color
+            
+        pygame.draw.polygon(screen, current_static_color, static_points)
 
         # Moving rectangle (windshield wiper motion)
         # angle oparty na beat_progress: pełny oscyl w jednym interwale

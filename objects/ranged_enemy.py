@@ -1,4 +1,5 @@
 import pygame
+import math
 from pathlib import Path
 from objects.enemy import Enemy
 from objects.projectile import Projectile
@@ -49,6 +50,9 @@ class RangedEnemy(Enemy):
                     print(f"Error loading frame {f}: {e}")
         
         if not self.frames:
+            # Fallback to default sprite if no frames found
+            # Resize to avoid giant cubes
+            self.sprite = pygame.transform.scale(self.sprite, (50, 50))
             self.frames.append(self.sprite)
             
         self.sprite = self.frames[0]
@@ -91,25 +95,10 @@ class RangedEnemy(Enemy):
                 self.sprite = self.frames[self.current_frame_idx]
                 self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
 
-        # Keep distance from target
-        if self.target_x is not None and self.target_y is not None:
-            dx = self.rect.centerx - self.target_x
-            dy = self.rect.centery - self.target_y
-            distance = (dx**2 + dy**2) ** 0.5
-            
-            if distance > 0:
-                if distance < self.keep_distance:
-                    dx = (dx / distance) * self.move_speed * dt_sec
-                    dy = (dy / distance) * self.move_speed * dt_sec
-                    self.rect.x += dx
-                    self.rect.y += dy
-                elif distance > self.keep_distance + 50:
-                    dx = -(dx / distance) * self.move_speed * dt_sec
-                    dy = -(dy / distance) * self.move_speed * dt_sec
-                    self.rect.x += dx
-                    self.rect.y += dy
-                
-                self.facing_right = (self.target_x - self.rect.centerx) > 0
+        # Keep distance from target - REMOVED CONTINUOUS MOVEMENT
+        # Now handled by Enemy.on_beat dash
+        # We might want to adjust dash direction in on_beat for ranged enemies to keep distance?
+        # For now, let's stick to "zigzag towards player" as requested, or maybe modify on_beat for Ranged.
         
         # Update projectiles and remove inactive ones
         for projectile in self.projectiles[:]:
@@ -118,7 +107,63 @@ class RangedEnemy(Enemy):
                 self.projectiles.remove(projectile)
         self.projectile_check_collision()
     
-    
+    def on_beat(self):
+        # Override on_beat to keep distance instead of just rushing
+        if not self.is_alive:
+            return
+        
+        self.beat_counter += 1
+        
+        # --- Movement on Beat (Zigzag Dash) ---
+        target_pos = None
+        if hasattr(self, "target") and self.target:
+            target_pos = self.target.rect.center
+        elif hasattr(self, "player") and self.player:
+             target_pos = self.player.rect.center
+             
+        if target_pos:
+            tx, ty = target_pos
+            cx, cy = self.rect.center
+            dx = tx - cx
+            dy = ty - cy
+            dist = math.hypot(dx, dy)
+            
+            if dist > 0:
+                # Base direction
+                dir_vec = pygame.math.Vector2(dx/dist, dy/dist)
+                
+                # If too close, back away
+                if dist < self.keep_distance:
+                    dir_vec = -dir_vec
+                elif dist < self.keep_distance + 100:
+                    # Sweet spot - strafe only
+                    dir_vec = pygame.math.Vector2(0, 0)
+                
+                # Perpendicular vector for zigzag
+                # If strafing (dir_vec ~ 0), use perpendicular to target direction
+                if dir_vec.length() == 0:
+                     base_dir = pygame.math.Vector2(dx/dist, dy/dist)
+                     perp_vec = pygame.math.Vector2(-base_dir.y, base_dir.x)
+                     final_vec = perp_vec * self.zigzag_direction
+                else:
+                    perp_vec = pygame.math.Vector2(-dir_vec.y, dir_vec.x)
+                    side_strength = 0.8
+                    final_vec = dir_vec + perp_vec * (side_strength * self.zigzag_direction)
+                
+                if final_vec.length() > 0:
+                    final_vec = final_vec.normalize()
+                
+                self.dash_vector = final_vec * self.dash_speed
+                self.dash_timer = self.dash_duration
+                
+                # Flip zigzag
+                self.zigzag_direction *= -1
+        
+        # Attack on cooldown interval
+        if self.beat_counter >= self.attack_cooldown:
+            self.beat_counter = 0
+            self.trigger_attack()
+
     def on_attack(self):
         """Shoot a projectile towards target."""
         # Check if visible on camera (with margin)

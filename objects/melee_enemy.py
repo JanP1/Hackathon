@@ -37,6 +37,8 @@ class MeleeEnemy(Enemy):
         
         if not self.frames:
             # Fallback to default sprite if no frames found
+            # Resize to avoid giant cubes
+            self.sprite = pygame.transform.scale(self.sprite, (50, 50))
             self.frames.append(self.sprite)
             
         self.sprite = self.frames[0]
@@ -66,7 +68,8 @@ class MeleeEnemy(Enemy):
                 self.sprite = self.frames[self.current_frame_idx]
                 self.sprite_flipped = pygame.transform.flip(self.sprite, True, False)
             
-        # Movement
+        # Movement - REMOVED CONTINUOUS MOVEMENT (Now handled by Enemy.on_beat dash)
+        # Only attack logic remains here
         if self.target:
             tx, ty = self.target.rect.center
             sx, sy = self.rect.center
@@ -75,15 +78,7 @@ class MeleeEnemy(Enemy):
             dy = ty - sy
             dist = (dx**2 + dy**2)**0.5
             
-            if dist > self.attack_range:
-                if dist > 0:
-                    move_x = (dx / dist) * self.move_speed * dt_sec
-                    move_y = (dy / dist) * self.move_speed * dt_sec
-                    self.rect.x += move_x
-                    self.rect.y += move_y
-                    
-                self.facing_right = dx > 0
-            else:
+            if dist <= self.attack_range:
                 # Attack logic here if continuous
                 if self.damage_cooldown <= 0:
                     self.on_attack()

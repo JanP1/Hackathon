@@ -262,28 +262,12 @@ class BaseLevel(ABC):
     def on_player_perfect_hit(self) -> None:
         """
         Wywoływane przez gracza, gdy klik LPM trafi idealnie w beat.
-        Tworzymy napis PERFECT! nad metronomem.
+        Zmieniamy kolor metronomu na żółty.
         """
         if self.bpm_counter is None:
             return
 
-        # Bierzemy pivot metronomu i rysujemy trochę powyżej
-        pivot_x = self.bpm_counter.rect.x
-        pivot_y = self.bpm_counter.rect.y
-
-        # Lekko nad metronomem (możesz dostroić offset)
-        text_x = pivot_x
-        text_y = pivot_y - 260
-
-        popup = BeatHitPopup(
-            text="PERFECT!",
-            x=text_x,
-            y=text_y,
-            color=(255, 255, 0),
-            lifetime_sec=0.8,
-            rise_speed=40.0,
-        )
-        self.hit_popups.append(popup)
+        self.bpm_counter.trigger_hit_feedback()
 
     # ======================================================================
     # UPDATE (wspólny + hooki poziomu)

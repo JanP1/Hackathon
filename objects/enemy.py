@@ -42,6 +42,13 @@ class Enemy(GameObject):
         self.damage_tint_timer = 0.0
         self.knockback_velocity = pygame.math.Vector2(0, 0)
         self.knockback_friction = 0.9
+        
+        # Beat Movement (Zigzag Dash)
+        self.dash_speed = 400.0 # px/s (instant burst)
+        self.dash_duration = 0.15 # seconds
+        self.dash_timer = 0.0
+        self.dash_vector = pygame.math.Vector2(0, 0)
+        self.zigzag_direction = 1 # 1 or -1
     
     
     def take_damage(self, amount: int, source_pos: tuple[int, int] = None):
@@ -85,6 +92,41 @@ class Enemy(GameObject):
             return
         
         self.beat_counter += 1
+        
+        # --- Movement on Beat (Zigzag Dash) ---
+        # Calculate direction to target (or random if no target)
+        target_pos = None
+        if hasattr(self, "target") and self.target:
+            target_pos = self.target.rect.center
+        elif hasattr(self, "player") and self.player: # Fallback
+             target_pos = self.player.rect.center
+             
+        if target_pos:
+            tx, ty = target_pos
+            cx, cy = self.rect.center
+            dx = tx - cx
+            dy = ty - cy
+            dist = math.hypot(dx, dy)
+            
+            if dist > 0:
+                # Base direction towards player
+                dir_vec = pygame.math.Vector2(dx/dist, dy/dist)
+                
+                # Perpendicular vector for zigzag
+                perp_vec = pygame.math.Vector2(-dir_vec.y, dir_vec.x)
+                
+                # Combine: mostly forward, some side
+                # Zigzag strength
+                side_strength = 0.6 
+                final_vec = dir_vec + perp_vec * (side_strength * self.zigzag_direction)
+                if final_vec.length() > 0:
+                    final_vec = final_vec.normalize()
+                
+                self.dash_vector = final_vec * self.dash_speed
+                self.dash_timer = self.dash_duration
+                
+                # Flip zigzag for next beat
+                self.zigzag_direction *= -1
         
         # Attack on cooldown interval
         if self.beat_counter >= self.attack_cooldown:
@@ -131,6 +173,22 @@ class Enemy(GameObject):
             self.knockback_velocity *= self.knockback_friction
             if self.knockback_velocity.length_squared() < 0.1:
                 self.knockback_velocity = pygame.math.Vector2(0, 0)
+        
+        # Apply Dash (Beat Movement)
+        if self.dash_timer > 0:
+            dt_sec = delta_time / 1000.0
+            self.dash_timer -= dt_sec
+            
+            # Move
+            move_x = self.dash_vector.x * dt_sec
+            move_y = self.dash_vector.y * dt_sec
+            
+            self.rect.x += int(move_x)
+            self.rect.y += int(move_y)
+            
+            # Facing direction based on dash
+            if abs(self.dash_vector.x) > 1:
+                self.facing_right = self.dash_vector.x > 0
 
         # Update attack animation
         if self.is_attacking:

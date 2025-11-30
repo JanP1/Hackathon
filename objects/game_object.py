@@ -41,7 +41,15 @@ class GameObject(ABC):
 
         # Wczytanie domyślnego sprite'a
         # (convert_alpha dla lepszej wydajności przy przezroczystości)
-        self.sprite = pygame.image.load("assets/pictures/default_sprite.png").convert_alpha()
+        try:
+            self.sprite = pygame.image.load("assets/pictures/default_sprite.png").convert_alpha()
+            # Resize default sprite to avoid giant cubes if it's large
+            if self.sprite.get_width() > 64 or self.sprite.get_height() > 64:
+                self.sprite = pygame.transform.scale(self.sprite, (64, 64))
+        except Exception as e:
+            print(f"[WARN] Could not load default_sprite.png: {e}")
+            self.sprite = pygame.Surface((64, 64))
+            self.sprite.fill((255, 0, 255)) # Magenta fallback
 
         # Zastosuj skalowanie do sprite’a
         if self.scale != 1.0:

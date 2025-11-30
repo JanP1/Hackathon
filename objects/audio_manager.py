@@ -87,7 +87,7 @@ class Level1AudioManager:
         self.active_player: vlc.MediaPlayer | None = None
         self.next_player: vlc.MediaPlayer | None = None
 
-        self.base_volume: int = 100
+        self.base_volume: int = 50
 
         self.crossfade_active: bool = False
         self.crossfade_start_ms: int = 0

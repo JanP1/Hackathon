@@ -9,12 +9,14 @@ class Building(GameObject):
         sprite_path = f"assets/pictures/buildings/{sprite_name}"
         try:
             self.sprite = pygame.image.load(sprite_path).convert_alpha()
-        except FileNotFoundError:
+        except (FileNotFoundError, pygame.error):
             print(f"Warning: {sprite_path} not found, trying default house.png.")
             try:
                 self.sprite = pygame.image.load("assets/pictures/buildings/house.png").convert_alpha()
-            except:
-                pass # GameObject default
+            except (FileNotFoundError, pygame.error):
+                # GameObject default is already set in super().__init__
+                # But we might want to ensure it's not giant if we rely on it here
+                pass 
 
         if self.scale != 1.0:
             w = self.sprite.get_width()

@@ -44,30 +44,47 @@ class KamikazeEnemy(Enemy):
         if self.target and self.rect.colliderect(self.target.rect):
             self.explode()
 
-    def on_attack(self):
-        # Called on beat
-        if not self.target:
+    def on_beat(self):
+        # Override on_beat for Kamikaze specific jump
+        if not self.is_alive:
             return
             
-        # Calculate direction
-        tx, ty = self.target.rect.center
-        cx, cy = self.rect.center
-        dx = tx - cx
-        dy = ty - cy
-        dist = math.hypot(dx, dy)
+        self.beat_counter += 1
         
-        if dist > 0:
-            # Jump towards player
-            jump_dist = min(dist, self.jump_distance)
-            move_x = (dx / dist) * jump_dist
-            move_y = (dy / dist) * jump_dist
+        # Kamikaze jumps directly towards player (maybe slight zigzag?)
+        # Let's use the base class zigzag logic but more aggressive forward
+        
+        target_pos = None
+        if self.target:
+            target_pos = self.target.rect.center
+             
+        if target_pos:
+            tx, ty = target_pos
+            cx, cy = self.rect.center
+            dx = tx - cx
+            dy = ty - cy
+            dist = math.hypot(dx, dy)
             
-            self.rect.x += int(move_x)
-            self.rect.y += int(move_y)
-            
-            # Check collision after move
-            if self.rect.colliderect(self.target.rect):
-                self.explode()
+            if dist > 0:
+                dir_vec = pygame.math.Vector2(dx/dist, dy/dist)
+                
+                # Slight zigzag
+                perp_vec = pygame.math.Vector2(-dir_vec.y, dir_vec.x)
+                side_strength = 0.3 # Less zigzag for kamikaze
+                
+                final_vec = dir_vec + perp_vec * (side_strength * self.zigzag_direction)
+                if final_vec.length() > 0:
+                    final_vec = final_vec.normalize()
+                
+                # Kamikaze jumps further/faster
+                self.dash_vector = final_vec * (self.dash_speed * 1.5)
+                self.dash_timer = self.dash_duration
+                
+                self.zigzag_direction *= -1
+
+    def on_attack(self):
+        # Kamikaze doesn't shoot, it explodes on contact
+        pass
 
     def draw_attack(self, screen):
         pass 

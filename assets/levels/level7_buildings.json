@@ -60,6 +60,12 @@
             "y": 1460,
             "type": "wall.png",
             "scale": 0.5
+        },
+        {
+            "x": 737,
+            "y": 453,
+            "type": "house.png",
+            "scale": 1.0
         }
     ]
 }

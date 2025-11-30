@@ -42,7 +42,7 @@ from objects.debugHUD import Level1DebugHUD          # jw.
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
 FPS = 60
-MUSIC_START_DELAY_SEC = 1.3
+MUSIC_START_DELAY_SEC = 1.6
 
 SOUNDS_DIR = BASE_DIR / "assets" / "sounds"
 BIT_MID_PATH = SOUNDS_DIR / "bit.mid"

@@ -180,12 +180,12 @@ Username for 'https://github.com': l mechanics.
         self.player.draw(self.screen)
 
         # draw hitbox for player
-        pygame.draw.rect(
-            self.screen,
-            (255, 0, 0),
-            self.camera.apply(self.player.rect),  # apply camera offset
-            2
-        )
+        # pygame.draw.rect(
+        #     self.screen,
+        #     (255, 0, 0),
+        #     self.camera.apply(self.player.rect),  # apply camera offset
+        #     2
+        # )
 
         for enemy in self.enemies:
             if enemy.is_active and enemy.is_alive:

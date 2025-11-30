@@ -32,7 +32,7 @@ class Player(GameObject):
         self.attack_anim_index = 0
         # --------------------------
 
-        self.attack_anim_speed = 2   # smaller = slower attack animation
+        self.attack_anim_speed = 0.8   # smaller = slower attack animation
         self.wave_anim_frames = []
         self.wave_anim_index = 0
         self.active_wave_animations = []  # list of dicts: {"pos": (x,y), "index": float}

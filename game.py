@@ -13,8 +13,10 @@ FPS = 60
 
 class Game:
     def __init__(self) -> None:
+
         pygame.init()
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        info = pygame.display.Info()
+        self.screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.FULLSCREEN | pygame.SCALED)
         pygame.display.set_caption("Main Game Hub")
 
         self.clock = pygame.time.Clock()
@@ -64,11 +66,18 @@ class GameStateManager:
     def set_state(self, current_state):
         print(f"[STATE] -> {current_state}")
 
-        # delete previous instance
+        # Usuń poprzednią instancję
         if current_state in game.states:
             del game.states[current_state]
 
+        # Utwórz nowy stan
         game.states[current_state] = game.create_state(current_state)
+        
+        # Reset enter press w nowym stanie (jeżeli istnieje)
+        state = game.states[current_state]
+        if hasattr(state, "_enter_was_pressed"):
+            state._enter_was_pressed = True  # traktujemy jak ENTER już wciśnięty
+
         self.current_state = current_state
     # def set_state(self, current_state):
     #     print(f"[STATE] -> {current_state}")
@@ -87,8 +96,14 @@ class End:
         self.font = pygame.font.SysFont("consolas", 40)
         self._enter_was_pressed = False
 
+        # grafika
+        self.image = pygame.image.load("assets/pictures/skull-head.png").convert_alpha()
+        self.image_rect = self.image.get_rect(center=(self.display.get_width() // 2, 300))
+
     def run(self, events, dt):
         self.display.fill("red")
+
+        self.display.blit(self.image, self.image_rect)
 
         text_surface = self.font.render(
             "Naciśnij ENTER, aby powrócić", True, (255, 255, 255)
@@ -120,14 +135,20 @@ class Start:
         self.font = pygame.font.SysFont("consolas", 40)
         self._enter_was_pressed = False
 
+        # grafika
+        self.image = pygame.image.load("assets/pictures/start_screen.png").convert_alpha()
+        self.image_rect = self.image.get_rect(center=(self.display.get_width() // 2, self.display.get_height() // 2))
+
     def run(self, events, dt):
         self.display.fill("green")
 
+        self.display.blit(self.image, self.image_rect)
+
         text_surface = self.font.render(
-            "Naciśnij ENTER, aby uruchomić LEVEL 1", True, (0, 0, 0)
+            "Naciśnij ENTER, aby uruchomić LEVEL 1", True, (255, 255, 255)
         )
         text_rect = text_surface.get_rect(
-            center=(self.display.get_width() // 2, self.display.get_height() // 2)
+            center=(self.display.get_width() // 2, self.display.get_height() // 2 + 200)
         )
         self.display.blit(text_surface, text_rect)
 

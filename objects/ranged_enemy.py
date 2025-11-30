@@ -6,7 +6,7 @@ class RangedEnemy(Enemy):
     def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, scale: float, target):
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale,
                         name="ranged_enemy", max_health=60, 
-                        attack_cooldown=2, damage=20)
+                        attack_cooldown=4, damage=20)
         
         self.rect.width = self.rect.width
         self.rect.height = self.rect.height
@@ -19,6 +19,7 @@ class RangedEnemy(Enemy):
         self.target_y = None
 
         self.keep_distance = 300
+        self.projectile_speed = 10
 
         self.is_alive = True
         self.is_active = True
@@ -79,9 +80,8 @@ class RangedEnemy(Enemy):
             distance = (dx**2 + dy**2) ** 0.5
             
             if distance > 0:
-                speed = 5
-                vx = (dx / distance) * speed
-                vy = (dy / distance) * speed
+                vx = (dx / distance) * self.projectile_speed
+                vy = (dy / distance) * self.projectile_speed
             else:
                 vx = 5 if self.facing_right else -5
                 vy = 0

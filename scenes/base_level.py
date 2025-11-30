@@ -77,7 +77,9 @@ class BaseLevel:
     def level_specific_functions(self):
         """
         Placeholder for level-specific functionality.
-        Override this method in child classes to add custom level mechanics.
+        Override this method in child classes to add custom leve❯ git push origin player-enemies-scrolling-map-feature
+fatal: cannot exec '/usr/bin/ksshaskpass': No such file or directory
+Username for 'https://github.com': l mechanics.
         
         Examples:
         - Special enemy spawn patterns

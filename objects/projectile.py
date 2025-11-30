@@ -3,12 +3,13 @@ from objects.game_object import GameObject
 
 class Projectile(GameObject):
     def __init__(self, x_pos: int, y_pos: int, SCREEN_W: int, SCREEN_H: int, 
-                 vx: float, vy: float, damage: int, scale: float = 0.1):
+                 vx: float, vy: float, damage: int, speed: int = 10, scale: float = 0.1):
         super().__init__(x_pos, y_pos, SCREEN_W, SCREEN_H, scale, "projectile")
         
         self.vx = vx
         self.vy = vy
         self.damage = damage
+        self.speed = speed
         self.is_active = True
         
         # Create a simple circular sprite if needed

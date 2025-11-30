@@ -39,7 +39,7 @@ class TestLevel:
         
 
         # In TestLevel.__init__ after creating player and camera
-        self.player.camera = self.camera
+        self.player.camera = self.camera #type: ignore
         # update camera
         self.camera.update(self.player)
         

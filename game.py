@@ -2,9 +2,16 @@
 
 import sys
 import pygame
+from pygame.locals import *
 
 # Importujemy klasę Game z level1 jako Level1Game
-from scenes.game_level7 import Game as Level1Game
+# from scenes.game_level7 import Game as Level1Game  <-- USUNIĘTE (przeniesione do Level1State)
+
+try:
+    from gl_postprocess import GLPostProcessor
+except ImportError:
+    print("Warning: Could not import GLPostProcessor. Running without effects.")
+    GLPostProcessor = None
 
 WIDTH = 1920
 HEIGHT = 1080
@@ -14,16 +21,31 @@ FPS = 60
 class Game:
     def __init__(self) -> None:
         pygame.init()
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        
+        # Initialize with OpenGL
+        self.screen = pygame.display.set_mode(
+            (WIDTH, HEIGHT), 
+            pygame.OPENGL | pygame.DOUBLEBUF
+        )
         pygame.display.set_caption("Main Game Hub")
+        
+        # Virtual screen for drawing (standard pygame surface)
+        self.virtual_screen = pygame.Surface((WIDTH, HEIGHT)).convert()
 
         self.clock = pygame.time.Clock()
+        
+        # Post processor
+        self.gl_post = None
+        if GLPostProcessor:
+            self.gl_post = GLPostProcessor(WIDTH, HEIGHT)
+
         self.game_state_manager = GameStateManager("start")  # początkowy stan
 
         # =============================================================
         # Ekrany / stany
-        self.start = Start(self.screen, self.game_state_manager)
-        self.level1 = Level1State(self.screen, self.clock, self.game_state_manager)
+        # Przekazujemy virtual_screen zamiast screen
+        self.start = Start(self.virtual_screen, self.game_state_manager)
+        self.level1 = Level1State(self.virtual_screen, self.clock, self.game_state_manager)
 
         self.states = {
             "start": self.start,
@@ -43,9 +65,19 @@ class Game:
 
             current_state_name = self.game_state_manager.get_state()
             state = self.states[current_state_name]
+            
+            # Run state logic (draws to virtual_screen)
             state.run(events, dt)
 
-            pygame.display.update()
+            # Render to screen using GLPostProcessor
+            if self.gl_post and hasattr(state, 'get_postprocess_args'):
+                args = state.get_postprocess_args()
+                self.gl_post.render(self.virtual_screen, **args)
+            else:
+                # Fallback if no GL or no args (shouldn't happen if we implement correctly)
+                pass
+
+            pygame.display.flip()
 
 
 class GameStateManager:
@@ -93,6 +125,18 @@ class Start:
         else:
             self._enter_was_pressed = False
 
+    def get_postprocess_args(self):
+        return {
+            "current_time_ms": pygame.time.get_ticks(),
+            "bullets": [],
+            "waves": [],
+            "invert": False,
+            "distortion_strength": 0.0,
+            "damage_tint": 0.0,
+            "black_hole_pos": (0.0, 0.0),
+            "black_hole_strength": 0.0
+        }
+
 
 class Level1State:
     """
@@ -108,12 +152,15 @@ class Level1State:
         self.clock = clock
         self.game_state_manager = game_state_manager
 
-        self.level_game: Level1Game | None = None
+        self.level_game = None # Type hint removed to avoid NameError if Level1Game is not imported yet
 
     def run(self, events, dt):
         # Lazy init – tworzymy level dopiero przy pierwszym wejściu
         if self.level_game is None:
             print("[INFO] Tworzenie Level1Game w Level1State")
+            # Importujemy tutaj, aby uniknąć błędów przy starcie aplikacji (np. brakujące DLL)
+            from scenes.game_level7 import Game as Level1Game
+            
             self.level_game = Level1Game(
                 screen=self.display,
                 clock=self.clock,
@@ -136,7 +183,76 @@ class Level1State:
             self.level_game = None
             self.game_state_manager.set_state("start")
 
+    def get_postprocess_args(self):
+        if self.level_game is None:
+             return {
+                "current_time_ms": pygame.time.get_ticks(),
+                "bullets": [],
+                "waves": [],
+                "invert": False,
+                "distortion_strength": 0.0,
+                "damage_tint": 0.0,
+                "black_hole_pos": (0.0, 0.0),
+                "black_hole_strength": 0.0
+            }
+        
+        game = self.level_game
+        
+        # Logic from game_level7.py
+        cam_x = game.camera.x if game.camera else 0
+        cam_y = game.camera.y if game.camera else 0
+
+        bullets_data = game.effects_manager.get_bullets_data()
+        bullets_data_screen = [
+            (x - cam_x, y - cam_y, vx, vy) for x, y, vx, vy in bullets_data
+        ]
+
+        waves_data = game.effects_manager.get_waves_data()
+        waves_data_screen = [
+            (cx - cam_x, cy - cam_y, start_time, thickness)
+            for cx, cy, start_time, thickness in waves_data
+        ]
+
+        current_time_ms = game.effects_manager.current_time
+        
+        invert = game.slow_time_active
+        distortion = 1.0 if game.slow_time_active else 0.0
+        
+        damage_tint = 0.0
+        if game.player.damage_tint_timer > 0:
+            damage_tint = min(1.0, game.player.damage_tint_timer / 200.0) * 0.6
+
+        bh_active = game.effects_manager.black_hole_active
+        bh_pos = (0.0, 0.0)
+        bh_strength = 0.0
+        
+        if bh_active:
+            bh_timer = game.effects_manager.black_hole_timer
+            bh_duration = game.effects_manager.black_hole_duration
+            bh_strength = bh_timer / bh_duration
+            raw_pos = game.effects_manager.black_hole_pos
+            bh_pos = (raw_pos[0] - cam_x, raw_pos[1] - cam_y)
+
+        return {
+            "current_time_ms": current_time_ms,
+            "bullets": bullets_data_screen,
+            "waves": waves_data_screen,
+            "invert": invert,
+            "distortion_strength": distortion,
+            "damage_tint": damage_tint,
+            "black_hole_pos": bh_pos,
+            "black_hole_strength": bh_strength
+        }
+
+
+def main():
+    try:
+        game = Game()
+        game.run()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        input("KRYTYCZNY BLAD W GAME.PY! Nacisnij ENTER aby zamknac...")
 
 if __name__ == "__main__":
-    game = Game()
-    game.run()
+    main()

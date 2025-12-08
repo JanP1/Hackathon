@@ -12,15 +12,30 @@ import pygame
 # Ścieżki i importy
 # -----------------------------
 
-CURRENT_DIR = Path(__file__).resolve().parent  # .../Hackathon/Level_level7
-BASE_DIR = CURRENT_DIR.parent                  # .../Hackathon
+if getattr(sys, 'frozen', False):
+    # Jeśli gra jest skompilowana (PyInstaller)
+    exe_dir = Path(sys.executable).parent
+    # Sprawdź czy istnieje folder _internal (PyInstaller 6+)
+    if (exe_dir / "_internal").exists():
+        BASE_DIR = exe_dir / "_internal"
+    else:
+        BASE_DIR = exe_dir
+    CURRENT_DIR = BASE_DIR / "scenes"
+else:
+    # Jeśli gra jest uruchamiana ze źródeł
+    CURRENT_DIR = Path(__file__).resolve().parent  # .../Hackathon/Level_level7
+    BASE_DIR = CURRENT_DIR.parent                  # .../Hackathon
 
 if str(CURRENT_DIR) not in sys.path:
     sys.path.append(str(CURRENT_DIR))
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
-from base_level import BaseLevel
+try:
+    from scenes.base_level import BaseLevel
+except ImportError:
+    # Fallback dla kompatybilności, jeśli uruchamiane w specyficzny sposób
+    from base_level import BaseLevel
 
 from objects.effects_manager import EffectsManager  # używany w BaseLevel, import zostawiony
 from objects.smoke import SmokeTrail

@@ -288,8 +288,8 @@ class GLPostProcessor:
         glUniform1f(self.u_waveStrength, 0.25)
 
         # domyślna siła czerwonego tintu (0..1)
-        glUniform1f(self.u_triTint, 0.1)
-        glUniform1f(self.u_waveTint, 0.1)
+        # glUniform1f(self.u_triTint, 0.1)
+        # glUniform1f(self.u_waveTint, 0.1)
         
         glUniform1f(self.u_invert, 0.0)
         glUniform1f(self.u_distortion, 0.0)
